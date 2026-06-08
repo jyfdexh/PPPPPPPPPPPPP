@@ -1,0 +1,20 @@
+---
+pid: 57676
+cwd: "D:\nanno\Gpt_Plus\转长链\opll"
+command: "Set-Location -LiteralPath 'D:\\nanno\\Gpt_Plus\\转长链\\opll'; .\\.venv\\Scripts\\python.exe _run_case.py \"测试session\\session1.txt\" jp_us - s1_jp_us 2>&1"
+started_at: 2026-06-08T12:12:57.094Z
+running_for_ms: 4790001  
+---
+=== s1_jp_us ===
+{"billing": "US", "payment_strategy": "jp_us", "checkout_proxy": "http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010", "provider_proxy": "http://bj2m1188418-region-US:nanno2@127.0.0.1:3010"}
+http 200
+{
+  "ok": false,
+  "cs_id": "cs_live_a1eSyAMhn4xwqvzi1PfTBto2m9iQ7QLdQfhmwyxq5BsQEwGvygVOM92Qng",
+  "billing_country": "US",
+  "currency": "USD",
+  "approve_result": "",
+  "url_type": "hosted_only",
+  "provider_error": "chatgpt approve 已通过但未拿到 PayPal redirect: attempts=107, last_error=; approve_result='approved'",
+  "long_url_head": "https://pay.openai.com/c/pay/cs_live_a1eSyAMhn4xwqvzi1PfTBto2m9iQ7QLdQfhmwyxq5BsQEwGvygVOM92Qng#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdpamZkaWAnPydgaycpJ3ZwZ3Zmd2x1cWxqa1BrbHRwYGtgdnZAa2RnaWBhJz9jZGl2YC"
+}

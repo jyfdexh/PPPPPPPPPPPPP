@@ -1,0 +1,661 @@
+from __future__ import annotations
+
+import json
+import os
+import queue
+import random
+import re
+import threading
+import time
+import uuid
+from pathlib import Path
+from typing import Any, Callable, Iterator
+from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit, urlunsplit
+
+import requests
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict, Field
+
+try:
+    from curl_cffi.requests import Session as CurlCffiSession  def check_proxy_info(proxy_url: str = "") -> dict[str, Any]:
+    endpoints = [
+        "http://ip-api.com/json?fields=status,message,query,country,countryCode,regionName,city,timezone,org,isp",
+        "https://ipinfo.io/json",
+    ]
+    errors: list[str] = []
+    for candidate in proxy_candidates(proxy_url):
+        proxies = {"http": candidate, "https": candidate} if candidate else None
+        for url in endpoints:
+            try:
+                response = requests.get(url, proxies=proxies, timeout=8)
+                response.raise_for_status()
+                info = normalize_proxy_probe_payload(response.json() or {})
+                if not info.get("ip"):
+                    raise RuntimeError("未返回 IP")
+                info["proxy"] = mask_proxy_url(candidate) if candidate else "direct"
+                info["proxy_url"] = candidate
+                info["protocol"] = urlsplit(candidate).scheme if candidate else "direct"
+                info["source"] = urlsplit(url).netloc
+                return info
+            except Exception as exc:
+                errors.append(f"{mask_proxy_url(candidate) or 'direct'} -> {url}: {exc}")
+    raise RuntimeError("代理检测失败: " + "; ".join(errors[-3:]))
+
+
+def redirect_url_after_confirm(
+    chatgpt: Any,
+    stripe: Any,
+    confirm_payload: dict[str, Any],
+    cs_id: str,
+    stripe_pk: str,
+    checkout: dict[str, Any],
+    req: LongLinkRequest,
+    ctx: dict[str, Any] | None = None,
+    progress: ProgressLogger = noop_progress,
+) -> str:
+    ctx = ctx or {}
+    terminal_error = extract_stripe_terminal_error(confirm_payload)
+    if terminal_error:
+        raise HTTPException(status_code=502, detail=terminal_error)
+
+    redirect_url = extract_redirect_to_url(confirm_payload)
+    if redirect_url:
+        progress("stripe_redirect", "Stripe confirm 已直接返回跳转地址。")
+        return redirect_url
+
+    submission = confirm_payload.get("submission_attempt") if isinstance(confirm_payload, dict) else None
+    if isinstance(submission, dict) and submission.get("state") == "requires_approval":
+        progress("stripe_redirect", "Stripe confirm 状态为 requires_approval，需要回到 ChatGPT 侧确认。")
+        checkout_proxy = checkout_stage_proxy(req)
+        poll_proxy_switched = False
+
+        def poll_redirect_after_approve(approve_attempt: int, approve_max_attempts: int, approve_result: str) -> str:
+            nonlocal poll_proxy_switched
+            if approve_result == "approved" and not poll_proxy_switched:
+                # 保留同一个 Stripe Session，只切换 redirect 轮询出口。
+                if checkout_proxy:
+                    set_proxy_url(stripe, checkout_proxy)
+                else:
+                    stripe.proxies = {}
+                poll_proxy_switched = True
+                progress(
+                    "redirect_poll",
+                    "approve 已通过，Stripe redirect 轮询切回 checkout 代理。",
+                    proxy_runtime_details(stripe, checkout_proxy),
+                )
+
+            progress(
+                "redirect_poll",
+                f"approve 第 {approve_attempt}/{approve_max_attempts} 次后检查 Stripe redirect。",
+                {
+                    "approve_attempt": approve_attempt,
+                    "approve_max_attempts": approve_max_attempts,
+                    "approve_result": approve_result,
+                },
+            )
+            try:
+                redirect_once = stripe_payment_page_redirect_url_once(
+                    stripe,
+                    cs_id,
+                    stripe_pk,
+                    req,
+                    ctx=ctx,
+                )
+                if redirect_once:
+                    return redirect_once
+            except HTTPException as exc:
+                if is_stripe_terminal_error_detail(exc.detail):
+                    raise
+                progress(
+                    "redirect_poll",
+                    f"approve 第 {approve_attempt}/{approve_max_attempts} 次后暂未拿到 Stripe redirect，继续 approve。",
+                    {"error": str(exc.detail), "approve_attempt": approve_attempt},
+                )
+                return ""
+            except Exception as exc:
+                progress(
+                    "redirect_poll",
+                    f"approve 第 {approve_attempt}/{approve_max_attempts} 次后暂未拿到 Stripe redirect，继续 approve。",
+                    {"error": str(exc), "approve_attempt": approve_attempt},
+                )
+                return ""
+
+            if approve_result == "approved" or approve_attempt >= approve_max_attempts:
+                try:
+                    return stripe_payment_page_redirect_url(
+                        stripe,
+                        cs_id,
+                        stripe_pk,
+                        req,
+                        ctx=ctx,
+                        timeout_seconds=8,
+                        progress=progress,
+                    )
+                except HTTPException as exc:
+                    if is_stripe_terminal_error_detail(exc.detail):
+                        raise
+                    progress(
+                        "redirect_poll",
+                        f"approve 第 {approve_attempt}/{approve_max_attempts} 次后暂未拿到 Stripe redirect，继续 approve。",
+                        {"error": str(exc.detail), "approve_attempt": approve_attempt},
+                    )
+            return ""
+
+        approved_redirect_url = chatgpt_approve_with_retry(
+            chatgpt,
+            cs_id,
+            checkout,
+            max_attempts=normalize_approve_retries(req.approve_retries),
+            progress=progress,
+            after_attempt=poll_redirect_after_approve,
+        )
+        if approved_redirect_url:
+            return approved_redirect_url
+        return stripe_payment_page_redirect_url(
+            stripe,
+            cs_id,
+            stripe_pk,
+            req,
+            ctx=ctx,
+            timeout_seconds=45,
+            progress=progress,
+        )
+
+    progress("stripe_redirect", "Stripe confirm 未直接返回跳转地址，开始轮询 payment page。")
+    return stripe_payment_page_redirect_url(
+        stripe,
+        cs_id,
+        stripe_pk,
+        req,
+        ctx=ctx,
+        timeout_seconds=30,
+        progress=progress,
+    )
+
+app = FastAPI(title="OpenAI Pay Long Link")
+app.mount("/public", StaticFiles(directory=PUBLIC_DIR), name="public")
+
+
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse(PUBLIC_DIR / "index.html")
+
+
+@app.get("/api/health")
+def health() -> dict[str, bool]:
+    return {"ok": True}
+
+
+def set_task_pause_state(task_id: str, paused: bool) -> dict[str, Any]:
+    safe_task_id = normalize_task_id(task_id)
+    if not safe_task_id:
+        raise HTTPException(status_code=400, detail="taskId 鏍煎紡涓嶆纭?)
+    with TASK_CONTROLLERS_LOCK:
+        controller = TASK_CONTROLLERS.get(safe_task_id)
+    if controller is None:
+        raise HTTPException(status_code=404, detail="浠诲姟涓嶅瓨鍦ㄦ垨宸茬粨鏉?)
+    if paused:
+        controller.pause()
+    else:
+        controller.resume()
+    return {"ok": True, "task_id": safe_task_id, "paused": controller.is_paused()}
+
+
+def terminate_task(task_id: str) -> dict[str, Any]:
+    safe_task_id = normalize_task_id(task_id)
+    if not safe_task_id:
+        raise HTTPException(status_code=400, detail="taskId 鏍煎紡涓嶆纭?)
+    with TASK_CONTROLLERS_LOCK:
+        controller = TASK_CONTROLLERS.get(safe_task_id)
+    if controller is None:
+        raise HTTPException(status_code=404, detail="浠诲姟涓嶅瓨鍦ㄦ垨宸茬粨鏉?)
+    controller.cancel()
+    return {"ok": True, "task_id": safe_task_id, "cancelled": controller.is_cancelled()}
+
+
+@app.post("/api/long-link/tasks/{task_id}/pause")
+def pause_long_link_task(task_id: str) -> dict[str, Any]:
+    return set_task_pause_state(task_id, True)
+
+
+@app.post("/api/long-link/tasks/{task_id}/resume")
+def resume_long_link_task(task_id: str) -> dict[str, Any]:
+    return set_task_pause_state(task_id, False)
+
+
+@app.post("/api/long-link/tasks/{task_id}/terminate")
+def terminate_long_link_task(task_id: str) -> dict[str, Any]:
+    return terminate_task(task_id)
+
+
+@app.post("/api/long-link/tasks/{task_id}/cancel")
+def cancel_long_link_task(task_id: str) -> dict[str, Any]:
+    return terminate_task(task_id)
+
+
+@app.post("/api/check-proxy", response_model=ProxyCheckResponse)
+def check_proxy(req: ProxyCheckRequest) -> ProxyCheckResponse:
+    return build_proxy_check_response(req)
+
+
+@app.post("/api/plus/payment-link/check-proxy")
+def check_payment_link_proxy(req: ProxyCheckRequest) -> dict[str, Any]:
+    response = build_proxy_check_response(req)
+    first_ok = next((item for item in response.checks if item.ok), None)
+    if not first_ok:
+        raise HTTPException(status_code=400, detail=response.message)
+    return {
+        "success": True,
+        "proxy_info": legacy_proxy_info(first_ok),
+        "checks": [item.model_dump() for item in response.checks],
+    }
+
+
+@app.post("/getPayPal_link", response_model=PublicPayPalLinkResponse)
+def get_paypal_link(req: PublicPayPalLinkRequest) -> PublicPayPalLinkResponse:
+    raw_input = resolve_public_paypal_input(req)
+    max_attempts = normalize_max_retries(req.max_retries)
+    if not normalize_access_token(raw_input):
+        return PublicPayPalLinkResponse(
+            success=False,
+            code="INVALID_INPUT",
+            message="鏈瘑鍒埌 access_token銆?,
+            paypal_link="",
+            hosted_long_url="",
+            attempt_count=0,
+            max_attempts=max_attempts,
+            retries_used=0,
+            cs_id="",
+            billing_country="",
+            currency="",
+            provider_error="",
+            last_error="鏈瘑鍒埌 access_token銆?,
+            provider_redirect_url="",
+            stripe_redirect_url="",
+            stripe_hosted_url="",
+            retry_history=[],
+        )
+
+    runtime_retry_history: list[RetryHistoryItem] = []
+    runtime_attempt = 0
+    runtime_max_attempts = max_attempts
+
+    def progress(_step: str, _message: str, data: dict[str, Any] | None = None) -> None:
+        nonlocal runtime_attempt, runtime_max_attempts
+        payload = dict(data or {})
+        attempt = int(payload.get("attempt") or 0)
+        max_value = int(payload.get("max_attempts") or runtime_max_attempts or max_attempts)
+        if attempt > runtime_attempt:
+            runtime_attempt = attempt
+        runtime_max_attempts = max(1, max_value)
+        if payload.get("phase") != "attempt_failed":
+            return
+        error_text = str(payload.get("error") or "").strip()
+        if not attempt or not error_text:
+            return
+        if runtime_retry_history and runtime_retry_history[-1].attempt == attempt and runtime_retry_history[-1].error == error_text:
+            return
+        runtime_retry_history.append(RetryHistoryItem(attempt=attempt, ok=False, error=error_text))
+
+    inner_req = build_public_paypal_request(req)
+    try:
+        result = generate_long_link_core(inner_req, progress=progress)
+        return build_public_paypal_success(result)
+    except HTTPException as exc:
+        attempt_count = runtime_attempt or runtime_max_attempts
+        return build_public_paypal_failure(
+            str(exc.detail),
+            attempt_count,
+            runtime_max_attempts,
+            runtime_retry_history,
+        )
+    except Exception as exc:
+        attempt_count = runtime_attempt or runtime_max_attempts
+        return build_public_paypal_failure(
+            str(exc),
+            attempt_count,
+            runtime_max_attempts,
+            runtime_retry_history,
+        )
+
+
+@app.post("/api/long-link", response_model=LongLinkResponse)
+def generate_long_link(req: LongLinkRequest) -> LongLinkResponse:
+    return generate_long_link_core(req)
+
+
+def generate_long_link_once(req: LongLinkRequest, progress: ProgressLogger = noop_progress) -> LongLinkResponse:
+    link_type = normalize_link_type(req.link_type)
+    checkout_proxy = checkout_stage_proxy(req)
+    provider_proxy = provider_stage_proxy(req) if link_type in {"paypal", "gopay"} else ""
+    progress(
+        "input",
+        "宸叉帴鏀惰姹傦紝姝ｅ湪璇嗗埆 access_token 鍜屽熀纭€鍙傛暟銆?,
+        {
+            "link_type": link_type,
+            "token": safe_token_hint(req.access_token),
+            "checkout_proxy": safe_proxy_hint(checkout_proxy),
+            "provider_proxy": safe_proxy_hint(provider_proxy) if provider_proxy else "",
+        },
+    )
+    progress("chatgpt_session", "姝ｅ湪鍒涘缓 ChatGPT 璇锋眰浼氳瘽銆?)
+    chatgpt = build_chatgpt_session(req)
+    progress("chatgpt_session", "ChatGPT 璇锋眰浼氳瘽浠ｇ悊宸茬敓鏁堛€?, proxy_runtime_details(chatgpt, checkout_proxy))
+    progress("checkout", "姝ｅ湪璇锋眰 ChatGPT 鍒涘缓 checkout session銆?)
+    checkout = create_checkout(req, chatgpt)
+    progress(
+        "checkout",
+        "ChatGPT checkout 鍒涘缓鎴愬姛銆?,
+        {
+            "cs_id": checkout["cs_id"],
+            "billing_country": checkout["billing_country"],
+            "currency": checkout["currency"],
+            "processor_entity": checkout["processor_entity"],
+        },
+    )
+    post_checkout_proxy = ""
+    if link_type in {"paypal", "gopay"}:
+        post_checkout_proxy = provider_proxy
+        progress(
+            "provider_proxy",
+            "Stripe/provider 闃舵灏嗕娇鐢?provider 浠ｇ悊锛孋hatGPT approve 淇濇寔 checkout 浠ｇ悊銆?,
+            {
+                "proxy": safe_proxy_hint(post_checkout_proxy),
+                "configured_protocol": str(urlsplit(post_checkout_proxy).scheme or "direct"),
+            },
+        )
+    progress("stripe_init", "姝ｅ湪鍒濆鍖?Stripe payment page銆?)
+    provider_stripe = build_stripe_session(req, proxy_override=post_checkout_proxy) if link_type in {"paypal", "gopay"} else None
+    init_payload = stripe_init(
+        checkout["cs_id"],
+        req,
+        proxy_override=post_checkout_proxy,
+        stripe_session=provider_stripe,
+    )
+    stripe_hosted_url = str(init_payload.get("stripe_hosted_url") or "").strip()
+    if not stripe_hosted_url:
+        raise HTTPException(
+            status_code=502,
+            detail=f"stripe init response missing stripe_hosted_url, keys={sorted(init_payload.keys())}",
+        )
+    progress(
+        "stripe_init",
+        "Stripe init 鎴愬姛锛屽凡鎷垮埌 hosted checkout URL銆?,
+        {
+            "stripe_hosted_url": stripe_hosted_url,
+            **(init_payload.get("_runtime_proxy") if isinstance(init_payload.get("_runtime_proxy"), dict) else {}),
+        },
+    )
+    hosted_long_url = to_openai_pay_url(stripe_hosted_url)
+    progress("hosted_url", "宸茬敓鎴?pay.openai.com hosted 闀块摼銆?, {"hosted_long_url": hosted_long_url})
+    provider = {
+        "payment_method_id": "",
+        "stripe_redirect_url": "",
+        "provider_redirect_url": "",
+        "long_url": hosted_long_url,
+    }
+    fallback = False
+    provider_error = ""
+    if link_type in {"paypal", "gopay"}:
+        try:
+            provider = create_provider_link(
+                chatgpt,
+                checkout,
+                init_payload,
+                stripe_hosted_url,
+                req,
+                provider_proxy=post_checkout_proxy,
+                stripe_session=provider_stripe,
+                progress=progress,
+            )
+        except HTTPException as exc:
+            fallback = True
+            provider_error = str(exc.detail)
+            progress("fallback", "Provider 閾炬彁鍙栧け璐ワ紝鍥為€€鍒?hosted 闀块摼銆?, {"error": provider_error})
+        except Exception as exc:
+            fallback = True
+            provider_error = str(exc)
+            progress("fallback", "Provider 閾炬彁鍙栧嚭鐜板紓甯革紝鍥為€€鍒?hosted 闀块摼銆?, {"error": provider_error})
+
+    result = response_from_parts(
+        req,
+        link_type,
+        checkout,
+        stripe_hosted_url,
+        hosted_long_url,
+        provider,
+        fallback,
+        provider_error,
+        ok=not fallback,
+    )
+    return result
+
+
+def generate_long_link_core(req: LongLinkRequest, progress: ProgressLogger = noop_progress) -> LongLinkResponse:
+    link_type = normalize_link_type(req.link_type)
+    max_attempts = 1 if link_type == "hosted" else normalize_max_retries(req.max_retries)
+    retry_history: list[RetryHistoryItem] = []
+    last_result: LongLinkResponse | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        def attempt_progress(step: str, message: str, data: dict[str, Any] | None = None) -> None:
+            payload = dict(data or {})
+            payload.setdefault("attempt", attempt)
+            payload.setdefault("max_attempts", max_attempts)
+            if step == "input":
+                payload.setdefault("reset_steps", True)
+            progress(step, message, payload)
+
+        progress(
+            "retry",
+            f"寮€濮嬬 {attempt}/{max_attempts} 杞彁鍙栥€?,
+            {"attempt": attempt, "max_attempts": max_attempts, "phase": "attempt_start"},
+        )
+        try:
+            result = generate_long_link_once(req, progress=attempt_progress)
+        except HTTPException as exc:
+            error_text = str(exc.detail)
+            retry_history.append(RetryHistoryItem(attempt=attempt, ok=False, error=error_text))
+            if attempt < max_attempts:
+                progress(
+                    "retry",
+                    f"绗?{attempt}/{max_attempts} 杞け璐ワ紝鍑嗗鑷姩閲嶈瘯銆?,
+                    {
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "error": error_text,
+                        "phase": "attempt_failed",
+                        "will_retry": True,
+                    },
+                )
+                continue
+            raise
+        except Exception as exc:
+            error_text = str(exc)
+            retry_history.append(RetryHistoryItem(attempt=attempt, ok=False, error=error_text))
+            if attempt < max_attempts:
+                progress(
+                    "retry",
+                    f"绗?{attempt}/{max_attempts} 杞嚭鐜板紓甯革紝鍑嗗鑷姩閲嶈瘯銆?,
+                    {
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "error": error_text,
+                        "phase": "attempt_failed",
+                        "will_retry": True,
+                    },
+                )
+                continue
+            raise
+
+        last_result = result
+        if link_type in {"paypal", "gopay"} and result.fallback:
+            error_text = result.provider_error or "provider 鎻愬彇澶辫触锛屽凡鍥為€€ hosted銆?
+            retry_history.append(
+                RetryHistoryItem(
+                    attempt=attempt,
+                    ok=False,
+                    error=error_text,
+                    fallback=True,
+                    long_url=result.long_url,
+                )
+            )
+            will_retry = attempt < max_attempts
+            progress(
+                "fallback",
+                f"绗?{attempt}/{max_attempts} 杞?provider 鎻愬彇澶辫触锛屽凡鍥為€€ hosted銆?
+                + (" 鍑嗗杩涘叆涓嬩竴杞噸璇曘€? if will_retry else " 宸茶揪鍒伴噸璇曚笂闄愩€?),
+                {
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "error": error_text,
+                    "phase": "attempt_failed",
+                    "will_retry": will_retry,
+                    "fallback_long_url": result.long_url,
+                },
+            )
+            if will_retry:
+                progress(
+                    "retry",
+                    f"绗?{attempt}/{max_attempts} 杞け璐ワ紝鍑嗗鑷姩閲嶈瘯銆?,
+                    {
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "error": error_text,
+                        "phase": "attempt_failed",
+                        "will_retry": True,
+                    },
+                )
+                continue
+
+            final_result = result.model_copy(
+                update={
+                    "ok": False,
+                    "attempt_count": attempt,
+                    "max_attempts": max_attempts,
+                    "retry_history": list(retry_history),
+                }
+            )
+            progress(
+                "done",
+                "宸茶揪鍒伴噸璇曚笂闄愶紝杩斿洖鏈€鍚庝竴杞?hosted 闀块摼銆?,
+                {
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
+                    "long_url": final_result.long_url,
+                    "fallback": final_result.fallback,
+                    "provider_error": final_result.provider_error,
+                },
+            )
+            return final_result
+
+        retry_history.append(RetryHistoryItem(attempt=attempt, ok=True, long_url=result.long_url))
+        final_result = result.model_copy(
+            update={
+                "ok": True,
+                "attempt_count": attempt,
+                "max_attempts": max_attempts,
+                "retry_history": list(retry_history),
+            }
+        )
+        progress(
+            "done",
+            "鐢熸垚娴佺▼瀹屾垚銆?,
+            {
+                "attempt": attempt,
+                "max_attempts": max_attempts,
+                "long_url": final_result.long_url,
+                "fallback": final_result.fallback,
+                "provider_error": final_result.provider_error,
+            },
+        )
+        return final_result
+
+    if last_result is not None:
+        return last_result
+    raise HTTPException(status_code=500, detail="鐢熸垚娴佺▼鏈繑鍥炵粨鏋溿€?)
+
+
+def stream_event(event: str, payload: dict[str, Any]) -> str:
+    return json.dumps({"event": event, **payload}, ensure_ascii=False) + "\n"
+
+
+@app.post("/api/long-link/stream")
+def generate_long_link_stream(req: LongLinkRequest) -> StreamingResponse:
+    events: queue.Queue[dict[str, Any] | None] = queue.Queue()
+    task_id = normalize_task_id(req.task_id) or uuid.uuid4().hex
+    pause_controller = get_or_create_task_controller(task_id)
+
+    def progress(step: str, message: str, data: dict[str, Any] | None = None) -> None:
+        pause_controller.raise_if_cancelled()
+        if pause_controller.wait_if_paused():
+            events.put(
+                {
+                    "type": "log",
+                    "step": "pause",
+                    "message": "浠诲姟宸茬户缁紝鎭㈠鎵ц銆?,
+                    "data": {"task_id": task_id},
+                    "ts": time.strftime("%H:%M:%S"),
+                }
+            )
+        pause_controller.raise_if_cancelled()
+        events.put(
+            {
+                "type": "log",
+                "step": step,
+                "message": message,
+                "data": data or {},
+                "ts": time.strftime("%H:%M:%S"),
+            }
+        )
+
+    def worker() -> None:
+        try:
+            result = generate_long_link_core(req, progress=progress)
+            events.put({"type": "result", "data": result.model_dump(by_alias=True)})
+        except TaskCancelled as exc:
+            events.put(
+                {
+                    "type": "cancelled",
+                    "status_code": 499,
+                    "step": "terminate",
+                    "message": str(exc),
+                    "data": {"task_id": task_id},
+                    "ts": time.strftime("%H:%M:%S"),
+                }
+            )
+        except HTTPException as exc:
+            events.put(
+                {
+                    "type": "error",
+                    "status_code": exc.status_code,
+                    "message": str(exc.detail),
+                    "ts": time.strftime("%H:%M:%S"),
+                }
+            )
+        except Exception as exc:
+            events.put(
+                {
+                    "type": "error",
+                    "status_code": 500,
+                    "message": str(exc),
+                    "ts": time.strftime("%H:%M:%S"),
+                }
+            )
+        finally:
+            release_task_controller(task_id)
+            events.put(None)
+
+    def event_stream() -> Iterator[str]:
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        yield stream_event("log", {"type": "log", "step": "start", "message": "寮€濮嬬敓鎴愪换鍔°€?, "data": {}, "ts": time.strftime("%H:%M:%S")})
+        while True:
+            item = events.get()
+            if item is None:
+                break
+            yield stream_event(str(item.get("type") or "log"), item)
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")

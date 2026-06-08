@@ -1,0 +1,24 @@
+---
+pid: 15264
+cwd: "D:\nanno\Gpt_Plus\转长链\opll"
+command: "Stop-Process -Id 41736 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; Set-Location -LiteralPath 'D:\\nanno\\Gpt_Plus\\转长链\\opll'; Start-Process -NoNewWindow -FilePath '.\\.venv\\Scripts\\python.exe' -ArgumentList '-m','uvicorn','app:app','--host','127.0.0.1','--port','8788','--no-access-log'; Start-Sleep -Seconds 3; .\\.venv\\Scripts\\python.exe _run_case.py \"测试session\\session1.txt\" jp_us - s1_reconfirm 2>&1"
+started_at: 2026-06-08T13:11:06.881Z
+running_for_ms: 1480003  
+---
+INFO:     Started server process [20460]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8788 (Press CTRL+C to quit)
+=== s1_reconfirm ===
+{"billing": "US", "payment_strategy": "jp_us", "checkout_proxy": "http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010", "provider_proxy": "http://bj2m1188418-region-US:nanno2@127.0.0.1:3010"}
+http 200
+{
+  "ok": false,
+  "cs_id": "cs_live_a15ZuH1VESddY3sW0eXHROjeJWn3d6g23k8K3zu7DsDpNClCBRTtiN9NJe",
+  "billing_country": "US",
+  "currency": "USD",
+  "approve_result": "",
+  "url_type": "hosted_only",
+  "provider_error": "chatgpt approve 已通过但未拿到 PayPal redirect: attempts=62, last_error=; approve_result='approved'",
+  "long_url_head": "https://pay.openai.com/c/pay/cs_live_a15ZuH1VESddY3sW0eXHROjeJWn3d6g23k8K3zu7DsDpNClCBRTtiN9NJe#fidnandhYHdWcXxpYCc%2FJ2FgY2RwaXEnKSdpamZkaWAnPydgaycpJ3ZwZ3Zmd2x1cWxqa1BrbHRwYGtgdnZAa2RnaWBhJz9jZGl2YC"
+}

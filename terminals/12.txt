@@ -1,0 +1,11 @@
+---
+pid: 2176
+cwd: "D:\nanno\Gpt_Plus\转长链\opll"
+command: "Set-Location -LiteralPath 'D:\\nanno\\Gpt_Plus\\转长链\\opll'; .\\.venv\\Scripts\\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8788 --no-access-log"
+started_at: 2026-06-08T09:26:22.597Z
+running_for_ms: 15385007 
+---
+INFO:     Started server process [39112]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8788 (Press CTRL+C to quit)

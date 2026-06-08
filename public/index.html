@@ -1,0 +1,3778 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>本地支付长链生成</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --left-pane-ratio: 0.5;
+        --right-pane-ratio: 0.5;
+        --bg: #eef3ef;
+        --bg-accent: #dbe8df;
+        --panel: #ffffff;
+        --panel-soft: #f7faf8;
+        --ink: #16302b;
+        --muted: #5f766f;
+        --line: #cfe0d8;
+        --soft: #e7f0eb;
+        --accent: #0c7a52;
+        --accent-dark: #095f3f;
+        --blue: #1760d2;
+        --warning: #b36a00;
+        --danger: #b42318;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top left, rgba(12, 122, 82, 0.12), transparent 38%),
+          linear-gradient(180deg, var(--bg-accent), var(--bg));
+        color: var(--ink);
+        font-family:
+          "Aptos", "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      main {
+        width: 100%;
+        min-height: 100vh;
+        min-height: 100dvh;
+        height: 100vh;
+        height: 100dvh;
+        padding: 16px;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 16px;
+        overflow: hidden;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 0.95fr) minmax(340px, auto);
+        gap: 16px;
+        align-items: center;
+        min-width: 0;
+      }
+
+      .header-copy {
+        min-width: 0;
+        max-width: 540px;
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(88px, 1fr));
+        gap: 8px;
+        min-width: 300px;
+      }
+
+      .header-side {
+        display: grid;
+        gap: 10px;
+        min-width: 300px;
+      }
+
+      .header-email {
+        min-width: 0;
+        display: flex;
+        justify-content: center;
+      }
+
+      .detected-email-banner {
+        width: min(100%, 520px);
+        padding: 10px 14px;
+        border: 1px solid rgba(180, 35, 24, 0.34);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow: 0 10px 24px rgba(180, 35, 24, 0.08);
+      }
+
+      .detected-email-banner strong {
+        display: block;
+        color: #cf1322;
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+
+      .detected-email-banner span {
+        display: block;
+        min-height: 20px;
+        font-size: 17px;
+        line-height: 1.25;
+        font-weight: 800;
+        color: #8f101d;
+        word-break: break-all;
+      }
+
+      .detected-email-banner.empty {
+        border-color: rgba(95, 118, 111, 0.28);
+        box-shadow: none;
+      }
+
+      .detected-email-banner.empty strong,
+      .detected-email-banner.empty span {
+        color: var(--muted);
+      }
+
+      .approve-result {
+        display: block;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--panel-soft);
+        font-weight: 700;
+        word-break: break-all;
+      }
+
+      .approve-result.approved {
+        color: var(--accent-dark);
+        border-color: rgba(12, 122, 82, 0.35);
+        background: rgba(12, 122, 82, 0.08);
+      }
+
+      .approve-result.blocked,
+      .approve-result.failed {
+        color: var(--danger);
+        border-color: rgba(180, 35, 24, 0.35);
+        background: rgba(180, 35, 24, 0.06);
+      }
+
+      .approve-result.pending {
+        color: var(--muted);
+      }
+
+      .stat {
+        padding: 10px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.62);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.82);
+        backdrop-filter: blur(6px);
+      }
+
+      .stat strong {
+        display: block;
+        font-size: 16px;
+      }
+
+      .stat span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .tool {
+        display: grid;
+        gap: 14px;
+        grid-template-columns:
+          minmax(360px, calc((100% - 40px) * var(--left-pane-ratio)))
+          12px
+          minmax(360px, calc((100% - 40px) * var(--right-pane-ratio)));
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 10px;
+        box-shadow: 0 16px 40px rgba(22, 48, 43, 0.08);
+        min-height: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .left-column,
+      .right-column {
+        min-width: 0;
+        min-height: 0;
+        height: 100%;
+        display: grid;
+        gap: 16px;
+        align-content: start;
+        overflow: auto;
+        padding-right: 4px;
+        scrollbar-gutter: stable;
+      }
+
+      .pane-divider {
+        position: relative;
+        min-height: 0;
+        height: 100%;
+        border-radius: 999px;
+        cursor: col-resize;
+        touch-action: none;
+        outline: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .pane-divider::before {
+        content: "";
+        width: 4px;
+        height: 72px;
+        border-radius: 999px;
+        background: rgba(95, 118, 111, 0.28);
+        transition:
+          background 0.18s ease,
+          box-shadow 0.18s ease,
+          height 0.18s ease;
+      }
+
+      .pane-divider:hover::before,
+      .pane-divider:focus-visible::before,
+      .pane-divider.dragging::before {
+        height: 110px;
+        background: rgba(12, 122, 82, 0.48);
+        box-shadow: 0 0 0 6px rgba(12, 122, 82, 0.08);
+      }
+
+      .tool.dragging {
+        user-select: none;
+      }
+
+      .form-panel,
+      .retry-panel {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+
+      .email-stats-panel {
+        position: sticky;
+        bottom: 0;
+        align-self: end;
+        padding: 14px;
+        border: 1px solid rgba(12, 122, 82, 0.28);
+        border-radius: 8px;
+        background: rgba(247, 250, 248, 0.96);
+        box-shadow: 0 -8px 24px rgba(22, 48, 43, 0.08);
+        backdrop-filter: blur(8px);
+      }
+
+      .email-stats-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .email-stats-title strong {
+        font-size: 14px;
+      }
+
+      .email-stats-grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      .email-stat-row {
+        display: grid;
+        grid-template-columns: minmax(88px, auto) minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #ffffff;
+      }
+
+      .email-stat-row span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+        word-break: break-word;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .field-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: start;
+        margin-bottom: 8px;
+      }
+
+      .field-head label {
+        margin-bottom: 0;
+      }
+
+      .quick-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: end;
+      }
+
+      textarea,
+      input,
+      select,
+      button {
+        font: inherit;
+      }
+
+      textarea,
+      input,
+      select {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+        color: var(--ink);
+        padding: 10px 12px;
+        outline: none;
+      }
+
+      textarea {
+        min-height: 180px;
+        resize: vertical;
+      }
+
+      textarea:focus,
+      input:focus,
+      select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(12, 122, 82, 0.14);
+      }
+
+      input:disabled,
+      select:disabled,
+      textarea:disabled {
+        background: #f3f6f5;
+        color: #6b7a75;
+        cursor: not-allowed;
+      }
+
+      .token-meta {
+        min-height: 22px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .proxy-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .proxy-card,
+      .step-panel,
+      .guide-panel,
+      .api-panel {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+
+      .proxy-card.disabled {
+        opacity: 0.58;
+      }
+
+      .quick-proxy-card {
+        margin-bottom: 12px;
+      }
+
+      .proxy-card-head {
+        display: grid;
+        gap: 4px;
+        margin-bottom: 10px;
+      }
+
+      .proxy-card-head strong {
+        font-size: 14px;
+      }
+
+      .proxy-card-head span,
+      .proxy-hint,
+      .step-subtitle,
+      .guide-panel p,
+      .modal-intro {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .proxy-actions,
+      .actions,
+      .result-actions,
+      .modal-head {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .proxy-result {
+        margin-top: 12px;
+        min-height: 74px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #ffffff;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .proxy-result.ok {
+        border-color: rgba(12, 122, 82, 0.34);
+        background: #effaf4;
+        color: var(--ink);
+      }
+
+      .proxy-result.error {
+        border-color: rgba(180, 35, 24, 0.28);
+        background: #fff4f2;
+        color: var(--danger);
+      }
+
+      details {
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+      }
+
+      summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      button,
+      a.button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        border: 0;
+        border-radius: 7px;
+        padding: 0 16px;
+        background: var(--accent);
+        color: white;
+        font-weight: 800;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      button:hover,
+      a.button:hover {
+        background: var(--accent-dark);
+      }
+
+      button.secondary,
+      a.button.secondary {
+        background: var(--soft);
+        color: var(--ink);
+      }
+
+      button.secondary:hover,
+      a.button.secondary:hover {
+        background: #d9e8df;
+      }
+
+      button.warning {
+        background: #fef3c7;
+        color: #7c4a03;
+      }
+
+      button.warning:hover {
+        background: #fde68a;
+      }
+
+      a.button.blue {
+        background: var(--blue);
+      }
+
+      a.button.blue:hover {
+        background: #0f4fab;
+      }
+
+      button:disabled,
+      a.button.disabled {
+        pointer-events: none;
+        cursor: wait;
+        opacity: 0.62;
+      }
+
+      .status {
+        min-height: 24px;
+        color: var(--muted);
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .status.ok {
+        color: var(--accent);
+      }
+
+      .step-panel {
+        display: grid;
+        gap: 12px;
+      }
+
+      .step-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: end;
+      }
+
+      .step-metric {
+        color: var(--muted);
+        font-size: 13px;
+        white-space: nowrap;
+      }
+
+      .progress-track {
+        height: 8px;
+        border-radius: 999px;
+        background: #d9e8df;
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        width: 0;
+        height: 100%;
+        background: linear-gradient(90deg, var(--accent), #31a476);
+        transition: width 0.18s ease;
+      }
+
+      .step-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .step-card {
+        min-height: 104px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: white;
+        display: grid;
+        gap: 6px;
+      }
+
+      .step-card.current {
+        border-color: rgba(12, 122, 82, 0.36);
+        box-shadow: inset 0 0 0 1px rgba(12, 122, 82, 0.16);
+      }
+
+      .step-card.done {
+        border-color: rgba(12, 122, 82, 0.2);
+        background: #f2fbf5;
+      }
+
+      .step-card.skipped {
+        background: #fbfcfc;
+      }
+
+      .step-card.error {
+        border-color: rgba(180, 35, 24, 0.28);
+        background: #fff6f5;
+      }
+
+      .step-card strong {
+        font-size: 13px;
+      }
+
+      .step-status {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .step-status.current {
+        color: var(--blue);
+      }
+
+      .step-status.done {
+        color: var(--accent);
+      }
+
+      .step-status.skipped {
+        color: var(--warning);
+      }
+
+      .step-status.error {
+        color: var(--danger);
+      }
+
+      .step-message {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .guide-panel {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        align-items: center;
+      }
+
+      .api-panel {
+        display: grid;
+        gap: 12px;
+      }
+
+      .api-panel p {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .log-panel {
+        display: none;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #08131a;
+        color: #d7ebff;
+      }
+
+      .log-panel.show {
+        display: grid;
+      }
+
+      .log-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        color: #f8fafc;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .log-list {
+        display: grid;
+        gap: 6px;
+        max-height: 300px;
+        overflow: auto;
+        font-family:
+          Consolas, "SFMono-Regular", "Liberation Mono", monospace;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .log-line {
+        overflow-wrap: anywhere;
+        color: #d6e4ff;
+      }
+
+      .log-line.error {
+        color: #fecaca;
+      }
+
+      .log-line.done {
+        color: #bbf7d0;
+      }
+
+      .run-overview {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .metric-card {
+        min-height: 82px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        display: grid;
+        gap: 6px;
+      }
+
+      .metric-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .metric-value {
+        color: var(--ink);
+        font-size: 24px;
+        font-weight: 900;
+        line-height: 1.05;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .metric-value.success {
+        color: var(--accent);
+      }
+
+      .metric-value.error {
+        color: var(--danger);
+      }
+
+      .metric-sub {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+        min-height: 17px;
+      }
+
+      .flow-details {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 0;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .flow-details > summary {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 14px;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 900;
+        list-style: none;
+      }
+
+      .flow-details > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .flow-details > summary::after {
+        content: "收起";
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .flow-details:not([open]) > summary::after {
+        content: "展开";
+      }
+
+      .flow-summary-sub {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .step-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 0 14px 14px;
+      }
+
+      .step-card {
+        min-height: 92px;
+        position: relative;
+        border-left: 4px solid #cbd5d1;
+      }
+
+      .step-card.current {
+        border-left-color: var(--blue);
+        background: #f7fbff;
+      }
+
+      .step-card.done {
+        border-left-color: var(--accent);
+      }
+
+      .step-card.error {
+        border-left-color: var(--danger);
+      }
+
+      .step-card.skipped {
+        border-left-color: var(--warning);
+      }
+
+      .step-card-headline {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .step-duration {
+        color: var(--muted);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .step-message {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .log-panel {
+        background: #f8faf9;
+        color: var(--ink);
+      }
+
+      .log-panel.show {
+        display: grid;
+      }
+
+      .log-head {
+        color: var(--ink);
+      }
+
+      .log-list {
+        max-height: 440px;
+        gap: 8px;
+      }
+
+      .log-line {
+        display: grid;
+        gap: 6px;
+        padding: 9px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        color: var(--ink);
+      }
+
+      .log-line.error {
+        border-color: rgba(180, 35, 24, 0.28);
+        background: #fff6f5;
+        color: var(--danger);
+      }
+
+      .log-line.done {
+        border-color: rgba(12, 122, 82, 0.24);
+        background: #f2fbf5;
+        color: var(--ink);
+      }
+
+      .log-main {
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr);
+        gap: 8px;
+        align-items: baseline;
+      }
+
+      .log-time,
+      .log-step {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .log-step {
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: #eef5f1;
+        color: var(--accent-dark);
+        font-weight: 800;
+      }
+
+      .log-message {
+        overflow-wrap: anywhere;
+        line-height: 1.45;
+      }
+
+      .log-meta {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .log-pill {
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #475569;
+      }
+
+      .log-pill.ok {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .log-pill.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .log-data {
+        margin: 0;
+        color: #64748b;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 11px;
+        line-height: 1.45;
+      }
+
+      @keyframes metricPulse {
+        0% {
+          transform: translateY(0);
+        }
+        40% {
+          transform: translateY(-2px);
+        }
+        100% {
+          transform: translateY(0);
+        }
+      }
+
+      .metric-value.bump {
+        animation: metricPulse 0.32s ease;
+      }
+
+      .result {
+        display: none;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfd;
+      }
+
+      .result.show {
+        display: grid;
+        gap: 12px;
+      }
+
+      .retry-panel {
+        display: grid;
+        gap: 12px;
+      }
+
+      .retry-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: end;
+      }
+
+      .retry-summary {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .retry-metric {
+        color: var(--muted);
+        font-size: 13px;
+        white-space: nowrap;
+      }
+
+      .retry-list {
+        display: grid;
+        gap: 10px;
+        min-height: 140px;
+      }
+
+      .retry-empty {
+        min-height: 140px;
+        padding: 14px;
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        background: #fcfefd;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .retry-item {
+        display: grid;
+        gap: 6px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      .retry-item.current {
+        border-color: rgba(23, 96, 210, 0.26);
+        background: #f3f8ff;
+      }
+
+      .retry-item.ok {
+        border-color: rgba(12, 122, 82, 0.26);
+        background: #f2fbf5;
+      }
+
+      .retry-item.error {
+        border-color: rgba(180, 35, 24, 0.28);
+        background: #fff6f5;
+      }
+
+      .retry-item-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .retry-item-title {
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .retry-item-state {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .retry-item.current .retry-item-state {
+        color: var(--blue);
+      }
+
+      .retry-item.ok .retry-item-state {
+        color: var(--accent);
+      }
+
+      .retry-item.error .retry-item-state {
+        color: var(--danger);
+      }
+
+      .retry-item-body {
+        color: var(--ink);
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .row {
+        display: grid;
+        gap: 6px;
+      }
+
+      code {
+        display: block;
+        overflow-wrap: anywhere;
+        padding: 12px;
+        border-radius: 6px;
+        background: var(--soft);
+        color: #101828;
+        line-height: 1.45;
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(8, 19, 26, 0.56);
+      }
+
+      .modal.show {
+        display: flex;
+      }
+
+      .modal-dialog {
+        width: min(920px, calc(100vw - 24px));
+        max-height: min(86vh, 920px);
+        overflow: auto;
+        padding: 18px;
+        border-radius: 10px;
+        background: white;
+        box-shadow: 0 24px 60px rgba(8, 19, 26, 0.26);
+      }
+
+      .modal-head {
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .modal-head h2 {
+        margin: 0;
+        font-size: 24px;
+      }
+
+      .principle-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .principle-step {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+
+      .principle-step strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+      }
+
+      .principle-step p {
+        color: var(--ink);
+        font-size: 13px;
+      }
+
+      @media (max-width: 960px) {
+        .run-overview {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .step-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 1180px) {
+        body {
+          overflow: auto;
+        }
+
+        main {
+          height: auto;
+          min-height: 100vh;
+          min-height: 100dvh;
+          overflow: visible;
+        }
+
+        header {
+          grid-template-columns: 1fr;
+          align-items: start;
+        }
+
+        .header-copy,
+        .header-email,
+        .header-side {
+          max-width: none;
+          min-width: 0;
+        }
+
+        .header-email {
+          justify-content: stretch;
+        }
+
+        .detected-email-banner {
+          width: 100%;
+        }
+
+        .tool {
+          height: auto;
+          grid-template-columns: 1fr;
+          overflow: visible;
+        }
+
+        .pane-divider {
+          display: none;
+        }
+
+        .left-column,
+        .right-column {
+          height: auto;
+          overflow: visible;
+          padding-right: 0;
+        }
+      }
+
+      @media (max-width: 840px) {
+        main {
+          padding: 12px;
+        }
+
+        .step-top,
+        .guide-panel,
+        .retry-head {
+          display: grid;
+          align-items: start;
+        }
+
+        h1 {
+          font-size: 26px;
+        }
+
+        .stats,
+        .run-overview,
+        .proxy-grid,
+        .grid,
+        .step-grid {
+          min-width: 0;
+          width: 100%;
+          grid-template-columns: 1fr;
+        }
+
+        header,
+        .header-side {
+          min-width: 0;
+        }
+
+        .detected-email-banner span {
+          font-size: 15px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="header-copy">
+          <h1>本地支付长链生成</h1>
+          <p>双代理分段输入，实时查看当前步骤，前端直接展开 PP 链提取原理。</p>
+        </div>
+        <div class="header-email">
+          <div id="detectedEmailBanner" class="detected-email-banner empty" aria-live="polite">
+            <strong id="detectedEmailLabel">检测到邮箱</strong>
+            <span id="detectedEmailValue">当前未检测到邮箱</span>
+          </div>
+        </div>
+        <div class="header-side">
+          <div class="stats" aria-label="local stats">
+            <div class="stat">
+              <strong>本地</strong>
+              <span>Token 不保存</span>
+            </div>
+            <div class="stat">
+              <strong>双代理</strong>
+              <span>checkout / provider</span>
+            </div>
+            <div class="stat">
+              <strong>默认</strong>
+              <span>PP 链</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="tool">
+        <div class="left-column">
+          <div class="form-panel">
+            <div>
+              <div class="field-head">
+                <label for="accessToken">Access Token 或 session JSON</label>
+                <div class="quick-actions">
+                  <button id="fetchBrowserSession" class="secondary" type="button">直接获取本浏览器 session</button>
+                  <button id="copySessionUrl" class="secondary" type="button">复制 session 地址</button>
+                  <button id="openSessionPage" class="secondary" type="button">打开 session 页面</button>
+                </div>
+              </div>
+              <textarea id="accessToken" autocomplete="off" spellcheck="false"></textarea>
+              <div id="tokenMeta" class="token-meta"></div>
+            </div>
+
+            <div class="grid">
+              <div>
+                <label for="linkType">链类型</label>
+                <select id="linkType">
+                  <option value="hosted">支付长链（默认美国）</option>
+                  <option value="paypal" selected>PP 链提取（美国账单）</option>
+                  <option value="gopay">GoPay 链提取（印尼地址）</option>
+                </select>
+              </div>
+              <div>
+                <label for="checkoutMode">支付页模式</label>
+                <select id="checkoutMode">
+                  <option value="hosted" selected>hosted: pay.openai.com 长链</option>
+                </select>
+              </div>
+              <div>
+                <label for="paymentStrategy">PP 策略组</label>
+                <select id="paymentStrategy">
+                  <option value="de_eur" selected>DE 一致画像（DE/EUR/de-DE/Berlin，参考 oaipay）</option>
+                  <option value="de_billing_us_provider">DE 账单 + DE checkout + US provider</option>
+                  <option value="jp_de_billing">JP checkout + DE 账单 + DE provider</option>
+                  <option value="jp_us">JP checkout + US 账单（保日区优惠）</option>
+                </select>
+              </div>
+              <div>
+                <label for="paymentLocale">支付页语言</label>
+                <select id="paymentLocale">
+                  <option value="en" selected>英文</option>
+                  <option value="zh-CN">简体中文</option>
+                  <option value="zh-TW">繁体中文</option>
+                  <option value="ja">日文</option>
+                  <option value="ko">韩文</option>
+                  <option value="de">德文</option>
+                  <option value="fr">法文</option>
+                  <option value="es">西班牙文</option>
+                  <option value="id">印尼文</option>
+                  <option value="pt-BR">葡萄牙文</option>
+                </select>
+              </div>
+              <div>
+                <label for="billingCountry">地区</label>
+                <select id="billingCountry"></select>
+              </div>
+              <div>
+                <label for="currency">币种</label>
+                <input id="currency" readonly />
+              </div>
+              <div>
+                <label for="maxRetries">失败重试次数</label>
+                <input id="maxRetries" type="number" min="1" max="20" step="1" value="5" />
+              </div>
+              <div>
+                <label for="approveRetries">approve 串行兜底次数</label>
+                <input id="approveRetries" type="number" min="1" max="30" step="1" value="10" />
+              </div>
+              <div>
+                <label for="approvePoolSize">approve 并发池容量</label>
+                <input id="approvePoolSize" type="number" min="1" max="100" step="1" value="50" />
+              </div>
+              <div>
+                <label for="approvePoolMaxAttempts">approve 池最大次数</label>
+                <input id="approvePoolMaxAttempts" type="number" min="50" max="5000" step="50" value="3000" />
+              </div>
+            </div>
+
+            <div class="proxy-card quick-proxy-card">
+              <div class="proxy-card-head">
+                <strong>快捷代理</strong>
+                <span>填一个基准代理后，自动生成 checkout=JP、provider=US。清空后可手动填写下面两个代理。</span>
+              </div>
+              <input
+                id="quickProxy"
+                list="proxyPresetList"
+                placeholder="例如 http://bj2m1188418-region-US:nanno2@127.0.0.1:3010"
+              />
+              <span id="quickProxyHint" class="proxy-hint">默认按 region-XX 中的国家简称自动替换。</span>
+            </div>
+
+            <datalist id="proxyPresetList">
+              <option value="http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010"></option>
+              <option value="http://bj2m1188418-region-US:nanno2@127.0.0.1:3010"></option>
+            </datalist>
+
+            <div class="proxy-grid">
+              <div id="checkoutProxyCard" class="proxy-card">
+                <div class="proxy-card-head">
+                  <strong>Checkout 代理</strong>
+                  <span>用于 ChatGPT checkout 与后续 approve。PP 默认建议日本出口。</span>
+                </div>
+                <input
+                  id="checkoutProxy"
+                  list="proxyPresetList"
+                  placeholder="例如 http://127.0.0.1:7890 或 socks5://user:pass@host:port"
+                />
+                <div class="proxy-actions">
+                  <button id="checkCheckoutProxy" class="secondary" type="button">检测 checkout 代理</button>
+                  <button id="checkRuntimeProxy" class="secondary" type="button">开启前检测代理</button>
+                  <span class="proxy-hint">默认使用日本出口；留空时按当前后端配置执行，可能走环境变量或直连。</span>
+                </div>
+                <div id="checkoutProxyResult" class="proxy-result">尚未检测 checkout 代理。</div>
+              </div>
+
+              <div id="providerProxyCard" class="proxy-card">
+                <div class="proxy-card-head">
+                  <strong>Provider 代理</strong>
+                  <span>用于 Stripe init、payment method、confirm 与外部跳转。PP 默认建议美国出口。</span>
+                </div>
+                <input
+                  id="providerProxy"
+                  list="proxyPresetList"
+                  placeholder="例如 http://127.0.0.1:7890 或 socks5://user:pass@host:port"
+                />
+                <div class="proxy-actions">
+                  <button id="checkProviderProxy" class="secondary" type="button">检测 provider 代理</button>
+                  <span id="providerProxyHint" class="proxy-hint">当前链类型会使用这一段代理执行 Stripe/provider 阶段。</span>
+                </div>
+                <div id="providerProxyResult" class="proxy-result">尚未检测 provider 代理。</div>
+              </div>
+            </div>
+
+            <details>
+              <summary>高级选项</summary>
+              <div class="grid">
+                <div>
+                  <label for="stripeKey">Stripe Publishable Key</label>
+                  <input id="stripeKey" placeholder="pk_live_..." />
+                </div>
+                <div>
+                  <label for="deviceId">Device ID</label>
+                  <input id="deviceId" placeholder="留空自动生成" />
+                </div>
+                <div>
+                  <label for="userAgent">User Agent</label>
+                  <input id="userAgent" placeholder="留空使用默认 Chrome UA" />
+                </div>
+              </div>
+            </details>
+
+            <div class="actions">
+              <button id="generate">提取 PP 链</button>
+              <button id="pauseTask" class="secondary" type="button" disabled>暂停</button>
+              <button id="resumeTask" class="secondary" type="button" disabled>继续</button>
+              <button id="terminateTask" class="warning" type="button" disabled>终止</button>
+              <button id="showPrinciple" class="warning" type="button">查看原理</button>
+              <button id="saveProxyConfig" class="secondary" type="button">保存代理</button>
+              <button id="clearProxyConfig" class="secondary" type="button">恢复默认</button>
+              <span id="status" class="status">等待操作。</span>
+            </div>
+          </div>
+
+          <div class="step-panel">
+            <div class="step-top">
+              <div>
+                <label style="margin-bottom: 4px">运行概览</label>
+                <div id="currentStepTitle"><strong>尚未开始</strong></div>
+                <div id="currentStepDetail" class="step-subtitle">开始提取后，这里会显示当前关键阶段和最近事件。</div>
+              </div>
+              <div id="stepMetric" class="step-metric">0 / 0</div>
+            </div>
+            <div class="run-overview">
+              <div class="metric-card">
+                <div class="metric-label">总耗时</div>
+                <div id="totalElapsedMetric" class="metric-value">0.0s</div>
+                <div id="totalElapsedSub" class="metric-sub">等待开始</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">当前轮次</div>
+                <div id="attemptMetric" class="metric-value">0/0</div>
+                <div id="attemptSub" class="metric-sub">自动重试状态</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">approve 并发</div>
+                <div id="approveCountMetric" class="metric-value">0</div>
+                <div id="approvePoolSub" class="metric-sub">池 0 路 / 上限 0 次</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">approve_result</div>
+                <div id="approveStateMetric" class="metric-value">pending</div>
+                <div id="approveStateSub" class="metric-sub">等待 approve 结果</div>
+              </div>
+            </div>
+            <div class="progress-track">
+              <div id="stepProgress" class="progress-fill"></div>
+            </div>
+            <details class="flow-details" open>
+              <summary>
+                <span>关键步骤流程</span>
+                <span id="flowSummarySub" class="flow-summary-sub">默认展开</span>
+              </summary>
+              <div id="stepGrid" class="step-grid"></div>
+            </details>
+          </div>
+
+          <div class="api-panel">
+            <div>
+              <label style="margin-bottom: 4px">对外接口用法</label>
+              <p>给外部程序对接时，直接调用 <code>/getPayPal_link</code>。内部会复用当前 PP 提取主流程；只有拿到 PayPal 授权长链时才返回 <code>success=true</code>。</p>
+            </div>
+            <div class="row">
+              <label>请求地址</label>
+              <code>POST /getPayPal_link</code>
+            </div>
+            <div class="row">
+              <label>请求示例</label>
+              <code>{
+  "accessToken": "{\"access_token\":\"eyJ...\"}",
+  "maxRetries": 5,
+  "checkout_proxy": "socks5://bj2m1188418-region-jp:nanno2@us.cliproxy.io:3010",
+  "provider_proxy": "socks5://bj2m1188418-region-US:nanno2@us.cliproxy.io:3010"
+}</code>
+            </div>
+            <div class="row">
+              <label>成功返回</label>
+              <code>{
+  "success": true,
+  "code": "SUCCESS",
+  "message": "第 1 / 5 轮成功生成 PP 链。",
+  "paypal_link": "https://www.paypal.com/agreements/approve?ba_token=BA-1SU08173WH746842C",
+  "attempt_count": 1,
+  "max_attempts": 5
+}</code>
+            </div>
+            <div class="row">
+              <label>失败返回</label>
+              <code>{
+  "success": false,
+  "code": "PAYPAL_LINK_NOT_FOUND",
+  "message": "provider 提取失败，已回退 hosted。",
+  "attempt_count": 5,
+  "max_attempts": 5,
+  "last_error": "provider 提取失败，已回退 hosted。",
+  "retry_history": [
+    { "attempt": 1, "ok": false, "error": "..." }
+  ]
+}</code>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="paneDivider"
+          class="pane-divider"
+          role="separator"
+          aria-label="调整左右区域宽度"
+          aria-orientation="vertical"
+          tabindex="0"
+        ></div>
+
+        <div class="right-column">
+          <div class="guide-panel">
+            <div>
+              <label style="margin-bottom: 4px">PP 链原理概览</label>
+              <p id="guideSummary">会先用 checkout 代理创建 checkout，再用 provider 代理进入 Stripe，approve 回到 checkout 代理，最后解析 PayPal 真实 redirect URL。失败会自动重试，默认 5 轮。</p>
+            </div>
+            <button id="showPrincipleInline" class="secondary" type="button">展开详细原理</button>
+          </div>
+
+          <div id="logPanel" class="log-panel" aria-live="polite">
+            <div class="log-head">
+              <span>实时步骤日志</span>
+              <button id="clearLog" class="secondary" type="button">清空日志</button>
+            </div>
+            <div id="logList" class="log-list"></div>
+          </div>
+
+          <div id="result" class="result">
+            <div class="result-actions">
+              <a id="openLink" class="button blue disabled" target="_blank" rel="noopener">跳转长链</a>
+              <button id="copy" class="secondary" type="button" disabled>复制长链</button>
+            </div>
+            <div class="row">
+              <label>长链</label>
+              <code id="longUrl"></code>
+            </div>
+            <div class="row">
+              <label>CS ID / 地区 / 币种</label>
+              <code id="summary"></code>
+            </div>
+            <div class="row">
+              <label>approve_result</label>
+              <code id="approveResultStatus" class="approve-result pending">尚未执行 approve</code>
+            </div>
+            <div class="row">
+              <label>提取状态</label>
+              <code id="extractStatus"></code>
+            </div>
+            <div class="row">
+              <label>Provider Redirect URL</label>
+              <code id="providerUrl"></code>
+            </div>
+            <div class="row">
+              <label>Stripe Redirect URL</label>
+              <code id="stripeRedirectUrl"></code>
+            </div>
+            <div class="row">
+              <label>原始 Stripe URL</label>
+              <code id="stripeUrl"></code>
+            </div>
+          </div>
+
+          <div class="retry-panel">
+            <div class="retry-head">
+              <div>
+                <label style="margin-bottom: 4px">重试状态</label>
+                <div id="retrySummary" class="retry-summary">尚未开始重试。本区域会实时显示当前轮次和每轮失败原因。</div>
+              </div>
+              <div id="retryMetric" class="retry-metric">0 / 0</div>
+            </div>
+            <div id="retryList" class="retry-list">
+              <div class="retry-empty">开始提取后，这里会按轮次显示当前执行状态、失败原因，以及最终成功或回退结果。</div>
+            </div>
+          </div>
+
+          <div class="email-stats-panel" aria-live="polite">
+            <div class="email-stats-title">
+              <strong>邮箱成功率统计</strong>
+            </div>
+            <div class="email-stats-grid">
+              <div class="email-stat-row">
+                <strong>有 email</strong>
+                <span id="emailStatsWith">成功 0 次 / 失败 0 次 / 成功率 0%</span>
+              </div>
+              <div class="email-stat-row">
+                <strong>无 email</strong>
+                <span id="emailStatsWithout">成功 0 次 / 失败 0 次 / 成功率 0%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="principleModal" class="modal" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-head">
+          <div>
+            <h2 id="principleTitle">PP 链生成原理</h2>
+            <div id="principleIntro" class="modal-intro"></div>
+          </div>
+          <button id="closePrinciple" class="secondary" type="button">关闭</button>
+        </div>
+        <div id="principleContent" class="principle-list"></div>
+      </div>
+    </div>
+
+    <script>
+      const COUNTRIES = [
+        ["US", "美国 US", "USD"],
+        ["GB", "英国 GB", "GBP"],
+        ["CA", "加拿大 CA", "CAD"],
+        ["AU", "澳大利亚 AU", "AUD"],
+        ["JP", "日本 JP", "JPY"],
+        ["SG", "新加坡 SG", "SGD"],
+        ["HK", "中国香港 HK", "HKD"],
+        ["TW", "中国台湾 TW", "TWD"],
+        ["KR", "韩国 KR", "KRW"],
+        ["ID", "印度尼西亚 ID", "IDR"],
+        ["MY", "马来西亚 MY", "MYR"],
+        ["TH", "泰国 TH", "THB"],
+        ["VN", "越南 VN", "VND"],
+        ["PH", "菲律宾 PH", "PHP"],
+        ["IN", "印度 IN", "INR"],
+        ["DE", "德国 DE", "EUR"],
+        ["FR", "法国 FR", "EUR"],
+        ["IT", "意大利 IT", "EUR"],
+        ["ES", "西班牙 ES", "EUR"],
+        ["NL", "荷兰 NL", "EUR"],
+        ["IE", "爱尔兰 IE", "EUR"],
+        ["PT", "葡萄牙 PT", "EUR"],
+        ["BE", "比利时 BE", "EUR"],
+        ["FI", "芬兰 FI", "EUR"],
+        ["AT", "奥地利 AT", "EUR"],
+        ["CH", "瑞士 CH", "CHF"],
+        ["SE", "瑞典 SE", "SEK"],
+        ["NO", "挪威 NO", "NOK"],
+        ["DK", "丹麦 DK", "DKK"],
+        ["PL", "波兰 PL", "PLN"],
+        ["CZ", "捷克 CZ", "CZK"],
+        ["MX", "墨西哥 MX", "MXN"],
+        ["BR", "巴西 BR", "BRL"],
+        ["NZ", "新西兰 NZ", "NZD"],
+      ];
+
+      const LOCKED_COUNTRY_BY_TYPE = {
+        hosted: "",
+        paypal: "",
+        gopay: "ID",
+      };
+
+      const STEP_LIBRARY = {
+        retry: {
+          label: "准备重试",
+          description: "本轮失败后，系统正在准备下一轮自动重试。",
+        },
+        input: {
+          label: "读取参数",
+          description: "解析 access_token、链类型、双代理配置。",
+        },
+        chatgpt_session: {
+          label: "创建 ChatGPT 会话",
+          description: "用 access_token 建立会话，准备请求 checkout。",
+        },
+        checkout: {
+          label: "创建 checkout",
+          description: "向 ChatGPT 请求 checkout，拿到 cs_id、地区、币种。",
+        },
+        provider_proxy: {
+          label: "使用 provider 代理",
+          description: "PP / GoPay 的 Stripe/provider 阶段使用后半段代理。",
+        },
+        stripe_init: {
+          label: "初始化 Stripe",
+          description: "请求 Stripe payment page init，拿到 hosted URL。",
+        },
+        hosted_url: {
+          label: "生成 hosted 长链",
+          description: "把 Stripe hosted URL 转成 pay.openai.com 长链。",
+        },
+        provider_prepare: {
+          label: "准备 provider 上下文",
+          description: "生成支付地址资料，准备创建 provider payment method。",
+        },
+        payment_method: {
+          label: "创建 payment method",
+          description: "在 Stripe 创建 PayPal / GoPay 对应的 payment method。",
+        },
+        stripe_confirm: {
+          label: "确认 Stripe checkout",
+          description: "请求 Stripe confirm，要求 Stripe 生成下一跳 redirect。",
+        },
+        chatgpt_approve: {
+          label: "ChatGPT approve",
+          description: "如果 Stripe 要求回源确认，会调用 ChatGPT checkout approve。",
+        },
+        redirect_poll: {
+          label: "轮询 Stripe redirect",
+          description: "持续轮询 Stripe payment page，等待 redirect URL 出现。",
+        },
+        stripe_redirect: {
+          label: "拿到 Stripe redirect",
+          description: "从 confirm 或轮询结果中解析 Stripe redirect URL。",
+        },
+        provider_redirect: {
+          label: "解析 provider 跳转",
+          description: "跟随外部跳转，解析出最终 PayPal / GoPay URL。",
+        },
+        provider_recover: {
+          label: "补提 provider",
+          description: "Stripe redirect 未直接命中时，尝试从 hosted 页面补提 provider 链接。",
+        },
+        fallback: {
+          label: "回退 hosted",
+          description: "provider 提取失败时回退到 hosted 长链。",
+        },
+        done: {
+          label: "完成",
+          description: "最终长链已生成并返回前端。",
+        },
+      };
+
+      const FLOW_STEPS = {
+        hosted: ["input", "chatgpt_session", "checkout", "stripe_init", "hosted_url", "done"],
+        paypal: [
+          "input",
+          "chatgpt_session",
+          "checkout",
+          "provider_proxy",
+          "stripe_init",
+          "hosted_url",
+          "provider_prepare",
+          "payment_method",
+          "stripe_confirm",
+          "chatgpt_approve",
+          "redirect_poll",
+          "stripe_redirect",
+          "provider_redirect",
+          "provider_recover",
+          "fallback",
+          "done",
+        ],
+        gopay: [
+          "input",
+          "chatgpt_session",
+          "checkout",
+          "provider_proxy",
+          "stripe_init",
+          "hosted_url",
+          "provider_prepare",
+          "payment_method",
+          "stripe_confirm",
+          "chatgpt_approve",
+          "redirect_poll",
+          "stripe_redirect",
+          "provider_redirect",
+          "provider_recover",
+          "fallback",
+          "done",
+        ],
+      };
+
+      const DISPLAY_FLOW_GROUPS = [
+        {
+          key: "prepare",
+          label: "准备会话",
+          description: "读取 token、代理、画像和重试参数。",
+          steps: ["input", "chatgpt_session"],
+        },
+        {
+          key: "checkout",
+          label: "创建 checkout",
+          description: "拿到 cs_id、地区、币种和 hosted 上下文。",
+          steps: ["checkout", "hosted_url"],
+        },
+        {
+          key: "stripe",
+          label: "Stripe 支付资料",
+          description: "provider 代理、Stripe init、账单画像、payment method 和 confirm。",
+          steps: ["provider_proxy", "stripe_init", "provider_prepare", "payment_method", "stripe_confirm"],
+        },
+        {
+          key: "approve",
+          label: "approve 请求池",
+          description: "并发调用 ChatGPT approve，并实时记录 approve_result。",
+          steps: ["chatgpt_approve"],
+        },
+        {
+          key: "redirect",
+          label: "redirect 轮询",
+          description: "独立轮询 Stripe / hosted，等待 PayPal BA redirect。",
+          steps: ["redirect_poll", "stripe_redirect", "provider_redirect", "provider_recover"],
+        },
+        {
+          key: "result",
+          label: "最终结果",
+          description: "返回 PayPal BA 链；失败时记录 fallback 和错误。",
+          steps: ["fallback", "done"],
+        },
+      ];
+
+      const $ = (id) => document.getElementById(id);
+      const CHATGPT_SESSION_URL = "https://chatgpt.com/api/auth/session";
+      const DEFAULT_QUICK_PROXY = "http://bj2m1188418-region-US:nanno2@127.0.0.1:3010";
+      const DEFAULT_CHECKOUT_PROXY = "http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010";
+      const DEFAULT_PROVIDER_PROXY = "http://bj2m1188418-region-US:nanno2@127.0.0.1:3010";
+      const QUICK_PROXY_REGION_PATTERN = /region-([a-z]{2})/i;
+      const DEFAULT_MAX_RETRIES = 5;
+      const DEFAULT_APPROVE_RETRIES = 10;
+      const DEFAULT_APPROVE_POOL_SIZE = 30;
+      const DEFAULT_APPROVE_POOL_MAX_ATTEMPTS = 600;
+      const PAYMENT_STRATEGIES = {
+        de_eur: { billing: "DE", locale: "de", checkout: "DE", provider: "DE" },
+        de_billing_us_provider: { billing: "DE", locale: "de", checkout: "DE", provider: "US" },
+        jp_de_billing: { billing: "DE", locale: "de", checkout: "JP", provider: "DE" },
+        jp_us: { billing: "US", locale: "en", checkout: "JP", provider: "US" },
+      };
+      const DEFAULT_PANE_RATIO = 0.5;
+      const MIN_PANE_RATIO = 0.28;
+      const MAX_PANE_RATIO = 0.72;
+      const EMAIL_STATS_STORAGE_KEY = "openai_pay_long_link_email_stats";
+      const generateButton = $("generate");
+      const pauseTaskButton = $("pauseTask");
+      const resumeTaskButton = $("resumeTask");
+      const terminateTaskButton = $("terminateTask");
+      const checkCheckoutProxyButton = $("checkCheckoutProxy");
+      const checkProviderProxyButton = $("checkProviderProxy");
+      const checkRuntimeProxyButton = $("checkRuntimeProxy");
+      const fetchBrowserSessionButton = $("fetchBrowserSession");
+      const openSessionPageButton = $("openSessionPage");
+      const copySessionUrlButton = $("copySessionUrl");
+      const copyButton = $("copy");
+      const openLink = $("openLink");
+      const statusLine = $("status");
+      const principleModal = $("principleModal");
+      const toolLayout = document.querySelector(".tool");
+      const paneDivider = $("paneDivider");
+      const desktopSplitMedia = window.matchMedia("(max-width: 1180px)");
+      const stepState = new Map();
+      let currentLongUrl = "";
+      let currentTaskId = "";
+      let taskRunning = false;
+      let taskPaused = false;
+      let taskTerminated = false;
+      let currentStepKey = "";
+      let retryState = null;
+      let paneDragState = null;
+      let currentInputEmail = "";
+      let currentRunHadEmail = false;
+      let runMetrics = null;
+      let elapsedTimer = null;
+      let approveCounterAnimation = null;
+
+      function setStatus(text, isError = false) {
+        statusLine.textContent = text;
+        statusLine.classList.toggle("error", isError);
+        statusLine.classList.toggle("ok", Boolean(text) && !isError);
+      }
+
+      function emptyEmailStats() {
+        return {
+          with_email: { success: 0, failure: 0 },
+          without_email: { success: 0, failure: 0 },
+        };
+      }
+
+      function readEmailStats() {
+        try {
+          const raw = localStorage.getItem(EMAIL_STATS_STORAGE_KEY);
+          if (!raw) return emptyEmailStats();
+          const parsed = JSON.parse(raw);
+          return {
+            with_email: {
+              success: Number.parseInt(String(parsed?.with_email?.success || 0), 10) || 0,
+              failure: Number.parseInt(String(parsed?.with_email?.failure || 0), 10) || 0,
+            },
+            without_email: {
+              success: Number.parseInt(String(parsed?.without_email?.success || 0), 10) || 0,
+              failure: Number.parseInt(String(parsed?.without_email?.failure || 0), 10) || 0,
+            },
+          };
+        } catch {
+          return emptyEmailStats();
+        }
+      }
+
+      function writeEmailStats(stats) {
+        localStorage.setItem(EMAIL_STATS_STORAGE_KEY, JSON.stringify(stats));
+      }
+
+      function formatEmailStatsLine(bucket) {
+        const success = Number.parseInt(String(bucket?.success || 0), 10) || 0;
+        const failure = Number.parseInt(String(bucket?.failure || 0), 10) || 0;
+        const total = success + failure;
+        const rate = total ? `${((success / total) * 100).toFixed(1)}%` : "0%";
+        return `成功 ${success} 次 / 失败 ${failure} 次 / 成功率 ${rate}`;
+      }
+
+      function renderEmailStats() {
+        const stats = readEmailStats();
+        $("emailStatsWith").textContent = formatEmailStatsLine(stats.with_email);
+        $("emailStatsWithout").textContent = formatEmailStatsLine(stats.without_email);
+      }
+
+      function recordEmailStats(hasEmail, ok) {
+        const stats = readEmailStats();
+        const key = hasEmail ? "with_email" : "without_email";
+        if (ok) {
+          stats[key].success += 1;
+        } else {
+          stats[key].failure += 1;
+        }
+        writeEmailStats(stats);
+        renderEmailStats();
+      }
+
+      function updateDetectedEmailBanner(email) {
+        const banner = $("detectedEmailBanner");
+        const label = $("detectedEmailLabel");
+        const value = $("detectedEmailValue");
+        if (email) {
+          banner.classList.remove("empty");
+          label.textContent = "检测到邮箱";
+          value.textContent = email;
+          return;
+        }
+        banner.classList.add("empty");
+        label.textContent = "检测到邮箱";
+        value.textContent = "当前未检测到邮箱";
+      }
+
+      function clampMaxRetries(value) {
+        const parsed = Number.parseInt(String(value || DEFAULT_MAX_RETRIES), 10);
+        if (!Number.isFinite(parsed)) return DEFAULT_MAX_RETRIES;
+        return Math.min(20, Math.max(1, parsed));
+      }
+
+      function clampApprovePoolSize(value) {
+        const parsed = Number.parseInt(String(value || DEFAULT_APPROVE_POOL_SIZE), 10);
+        if (!Number.isFinite(parsed)) return DEFAULT_APPROVE_POOL_SIZE;
+        return Math.max(1, Math.min(parsed, 100));
+      }
+
+      function clampApprovePoolMaxAttempts(value) {
+        const parsed = Number.parseInt(String(value || DEFAULT_APPROVE_POOL_MAX_ATTEMPTS), 10);
+        if (!Number.isFinite(parsed)) return DEFAULT_APPROVE_POOL_MAX_ATTEMPTS;
+        return Math.max(50, Math.min(parsed, 5000));
+      }
+
+      function currentPaymentStrategyProfile() {
+        return PAYMENT_STRATEGIES[$("paymentStrategy").value] || PAYMENT_STRATEGIES.jp_us;
+      }
+
+      function applyPaymentStrategyFields() {
+        if ($("linkType").value !== "paypal") return;
+        const profile = currentPaymentStrategyProfile();
+        $("billingCountry").value = profile.billing;
+        $("paymentLocale").value = profile.locale;
+        applyQuickProxyState();
+        syncProviderProxyForBillingCountry();
+        updateCurrency();
+      }
+
+      function clampApproveRetries(value) {
+        const parsed = Number.parseInt(String(value || DEFAULT_APPROVE_RETRIES), 10);
+        if (!Number.isFinite(parsed)) return DEFAULT_APPROVE_RETRIES;
+        return Math.min(30, Math.max(1, parsed));
+      }
+
+      function createTaskId() {
+        if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+        return `task_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      }
+
+      function updateTaskControls() {
+        pauseTaskButton.disabled = !taskRunning || taskPaused;
+        resumeTaskButton.disabled = !taskRunning || !taskPaused;
+        terminateTaskButton.disabled = !taskRunning || taskTerminated;
+      }
+
+      function clampPaneRatio(value) {
+        const numeric = Number.parseFloat(String(value || DEFAULT_PANE_RATIO));
+        if (!Number.isFinite(numeric)) return DEFAULT_PANE_RATIO;
+        return Math.min(MAX_PANE_RATIO, Math.max(MIN_PANE_RATIO, numeric));
+      }
+
+      function persistPaneRatio(ratio) {
+        localStorage.setItem("openai_pay_long_link_split_ratio", String(clampPaneRatio(ratio)));
+      }
+
+      function applyPaneRatio(ratio, shouldPersist = false) {
+        const safeRatio = clampPaneRatio(ratio);
+        document.documentElement.style.setProperty("--left-pane-ratio", String(safeRatio));
+        document.documentElement.style.setProperty("--right-pane-ratio", String(1 - safeRatio));
+        if (shouldPersist) persistPaneRatio(safeRatio);
+      }
+
+      function loadPaneRatio() {
+        const raw = localStorage.getItem("openai_pay_long_link_split_ratio");
+        applyPaneRatio(raw || DEFAULT_PANE_RATIO);
+      }
+
+      function updatePaneRatioFromClientX(clientX) {
+        if (!toolLayout || desktopSplitMedia.matches) return;
+        const rect = toolLayout.getBoundingClientRect();
+        if (!rect.width) return;
+        const ratio = (clientX - rect.left) / rect.width;
+        applyPaneRatio(ratio, true);
+      }
+
+      function stopPaneDrag() {
+        if (!paneDragState) return;
+        paneDragState = null;
+        toolLayout?.classList.remove("dragging");
+        paneDivider?.classList.remove("dragging");
+        document.body.style.cursor = "";
+      }
+
+      function startPaneDrag(clientX) {
+        if (!toolLayout || desktopSplitMedia.matches) return;
+        paneDragState = { active: true };
+        toolLayout.classList.add("dragging");
+        paneDivider?.classList.add("dragging");
+        document.body.style.cursor = "col-resize";
+        updatePaneRatioFromClientX(clientX);
+      }
+
+      function bindPaneResize() {
+        if (!paneDivider || !toolLayout) return;
+
+        paneDivider.addEventListener("pointerdown", (event) => {
+          if (desktopSplitMedia.matches) return;
+          paneDivider.setPointerCapture(event.pointerId);
+          startPaneDrag(event.clientX);
+        });
+
+        paneDivider.addEventListener("pointermove", (event) => {
+          if (!paneDragState?.active) return;
+          updatePaneRatioFromClientX(event.clientX);
+        });
+
+        paneDivider.addEventListener("pointerup", () => {
+          stopPaneDrag();
+        });
+
+        paneDivider.addEventListener("pointercancel", () => {
+          stopPaneDrag();
+        });
+
+        paneDivider.addEventListener("keydown", (event) => {
+          if (desktopSplitMedia.matches) return;
+          const current = clampPaneRatio(
+            getComputedStyle(document.documentElement).getPropertyValue("--left-pane-ratio") || DEFAULT_PANE_RATIO,
+          );
+          if (event.key === "ArrowLeft") {
+            event.preventDefault();
+            applyPaneRatio(current - 0.03, true);
+          }
+          if (event.key === "ArrowRight") {
+            event.preventDefault();
+            applyPaneRatio(current + 0.03, true);
+          }
+          if (event.key === "Home") {
+            event.preventDefault();
+            applyPaneRatio(DEFAULT_PANE_RATIO, true);
+          }
+        });
+
+        desktopSplitMedia.addEventListener("change", () => {
+          stopPaneDrag();
+        });
+      }
+
+      function defaultProxyConfig() {
+        return {
+          quick_proxy: DEFAULT_QUICK_PROXY,
+          checkout_proxy: DEFAULT_CHECKOUT_PROXY,
+          provider_proxy: DEFAULT_PROVIDER_PROXY,
+          max_retries: DEFAULT_MAX_RETRIES,
+          approve_retries: DEFAULT_APPROVE_RETRIES,
+          approve_pool_size: DEFAULT_APPROVE_POOL_SIZE,
+          approve_pool_max_attempts: DEFAULT_APPROVE_POOL_MAX_ATTEMPTS,
+          payment_strategy: "de_eur",
+        };
+      }
+
+      // 快捷代理只负责派生 checkout/provider 两段代理，避免每次重复填写。
+      function deriveRegionProxy(proxy, countryCode) {
+        const value = String(proxy || "").trim();
+        if (!value) return "";
+        if (!QUICK_PROXY_REGION_PATTERN.test(value)) return value;
+        return value.replace(QUICK_PROXY_REGION_PATTERN, `region-${countryCode.toUpperCase()}`);
+      }
+
+      function applyQuickProxyState() {
+        const quickProxy = $("quickProxy").value.trim();
+        const quickEnabled = Boolean(quickProxy);
+        const providerDisabledByType = $("linkType").value === "hosted";
+
+        if (quickEnabled) {
+          const profile = currentPaymentStrategyProfile();
+          $("checkoutProxy").value = deriveRegionProxy(quickProxy, profile.checkout);
+          $("providerProxy").value = deriveRegionProxy(quickProxy, profile.provider);
+        }
+
+        $("checkoutProxy").disabled = quickEnabled;
+        $("providerProxy").disabled = quickEnabled || providerDisabledByType;
+        $("checkoutProxyCard").classList.toggle("disabled", quickEnabled);
+        $("providerProxyCard").classList.toggle("disabled", quickEnabled || providerDisabledByType);
+        const profile = currentPaymentStrategyProfile();
+        $("quickProxyHint").textContent = quickEnabled
+          ? `已按策略自动生成 checkout=${profile.checkout}、provider=${profile.provider}。清空快捷代理后，可手动填写下面两个代理。`
+          : "默认按 region-XX 中的国家简称自动替换。";
+      }
+
+      function applyProxyConfig(config) {
+        const merged = { ...defaultProxyConfig(), ...(config || {}) };
+        $("quickProxy").value = String(merged.quick_proxy || "");
+        $("checkoutProxy").value = String(merged.checkout_proxy || DEFAULT_CHECKOUT_PROXY);
+        $("providerProxy").value = String(merged.provider_proxy || DEFAULT_PROVIDER_PROXY);
+        $("maxRetries").value = String(clampMaxRetries(merged.max_retries));
+        $("approveRetries").value = String(clampApproveRetries(merged.approve_retries));
+        $("approvePoolSize").value = String(clampApprovePoolSize(merged.approve_pool_size));
+        $("approvePoolMaxAttempts").value = String(clampApprovePoolMaxAttempts(merged.approve_pool_max_attempts));
+        $("paymentStrategy").value = merged.payment_strategy || "jp_us";
+        applyQuickProxyState();
+        applyPaymentStrategyFields();
+      }
+
+      function newRetryState(maxAttempts = clampMaxRetries($("maxRetries").value)) {
+        return {
+          maxAttempts,
+          currentAttempt: 0,
+          summary: "尚未开始重试。本区域会实时显示当前轮次和每轮失败原因。",
+          items: new Map(),
+          final: false,
+        };
+      }
+
+      function retryStatusLabel(status) {
+        return {
+          current: "进行中",
+          ok: "成功",
+          error: "失败",
+        }[status] || "待执行";
+      }
+
+      function renderRetryState() {
+        if (!retryState) retryState = newRetryState();
+        $("retrySummary").textContent = retryState.summary;
+        $("retryMetric").textContent = retryState.maxAttempts
+          ? `${retryState.currentAttempt || 0} / ${retryState.maxAttempts}`
+          : "0 / 0";
+
+        const list = $("retryList");
+        list.innerHTML = "";
+        const items = [...retryState.items.values()].sort((a, b) => a.attempt - b.attempt);
+        if (!items.length) {
+          const empty = document.createElement("div");
+          empty.className = "retry-empty";
+          empty.textContent = "开始提取后，这里会按轮次显示当前执行状态、失败原因，以及最终成功或回退结果。";
+          list.appendChild(empty);
+          return;
+        }
+
+        for (const item of items) {
+          const card = document.createElement("div");
+          card.className = `retry-item ${item.status || "current"}`;
+          card.innerHTML = `
+            <div class="retry-item-head">
+              <span class="retry-item-title">第 ${item.attempt} 轮</span>
+              <span class="retry-item-state">${retryStatusLabel(item.status)}</span>
+            </div>
+            <div class="retry-item-body">${item.body || "正在执行本轮提取。"}</div>
+          `;
+          list.appendChild(card);
+        }
+      }
+
+      function resetRetryState(maxAttempts = clampMaxRetries($("maxRetries").value)) {
+        retryState = newRetryState(maxAttempts);
+        renderRetryState();
+      }
+
+      function upsertRetryItem(attempt, patch = {}, maxAttempts = retryState?.maxAttempts || clampMaxRetries($("maxRetries").value)) {
+        if (!attempt) return;
+        if (!retryState) retryState = newRetryState(maxAttempts);
+        retryState.maxAttempts = Math.max(retryState.maxAttempts || 0, maxAttempts || 0);
+        const existing = retryState.items.get(attempt) || {
+          attempt,
+          status: "current",
+          body: "正在执行本轮提取。",
+        };
+        retryState.items.set(attempt, { ...existing, ...patch, attempt });
+        renderRetryState();
+      }
+
+      function applyRetryHistory(history, data = {}) {
+        const maxAttempts = clampMaxRetries(data.max_attempts || $("maxRetries").value);
+        retryState = newRetryState(maxAttempts);
+        retryState.final = true;
+        retryState.currentAttempt = Number.parseInt(String(data.attempt_count || maxAttempts || history?.length || 0), 10) || 0;
+        const linkLabel =
+          data.link_type === "paypal" ? "PP 链" : data.link_type === "gopay" ? "GoPay 链" : "hosted 长链";
+        for (const item of history || []) {
+          retryState.items.set(item.attempt, {
+            attempt: item.attempt,
+            status: item.ok ? "ok" : "error",
+            body: item.ok
+              ? "本轮成功生成最终长链。"
+              : item.error || (item.fallback ? "本轮 provider 提取失败，已回退到 hosted 长链。" : "本轮提取失败。"),
+          });
+        }
+        retryState.summary = data.ok
+          ? `第 ${data.attempt_count || 1} / ${maxAttempts} 轮成功生成${linkLabel === "hosted 长链" ? "" : " "} ${linkLabel}。`
+          : `已重试 ${data.attempt_count || maxAttempts} 轮，provider 提取仍失败，当前返回最后一轮 hosted 长链。`;
+        renderRetryState();
+      }
+
+      function syncRetryStateFromEvent(item) {
+        const type = item.type || item.event || "log";
+        const data = item.data || {};
+        const maxAttempts = clampMaxRetries(data.max_attempts || retryState?.maxAttempts || $("maxRetries").value);
+        const attempt = Number.parseInt(String(data.attempt || retryState?.currentAttempt || 0), 10) || 0;
+        const message = item.message || data.error || "本轮提取失败。";
+
+        if (!retryState) retryState = newRetryState(maxAttempts);
+        retryState.maxAttempts = maxAttempts;
+        if (attempt) retryState.currentAttempt = Math.max(retryState.currentAttempt || 0, attempt);
+
+        if (item.step === "retry" && data.phase === "attempt_start") {
+          retryState.summary = `正在执行第 ${attempt} / ${maxAttempts} 轮。`;
+          upsertRetryItem(
+            attempt,
+            {
+              status: "current",
+              body: "本轮已开始，正在重新发起 checkout 与 provider 提取。",
+            },
+            maxAttempts,
+          );
+          return;
+        }
+
+        if (item.step === "fallback") {
+          const body = `${data.error || message}${data.will_retry ? " 即将自动重试。" : " 当前轮次已失败。"}`;
+          retryState.summary = data.will_retry
+            ? `第 ${attempt} / ${maxAttempts} 轮 provider 提取失败，正在准备下一轮。`
+            : `第 ${attempt} / ${maxAttempts} 轮 provider 提取失败。`;
+          upsertRetryItem(
+            attempt,
+            {
+              status: "error",
+              body,
+            },
+            maxAttempts,
+          );
+          return;
+        }
+
+        if (item.step === "retry" && data.phase === "attempt_failed") {
+          retryState.final = !data.will_retry;
+          retryState.summary = data.will_retry
+            ? `第 ${attempt} / ${maxAttempts} 轮失败，准备自动重试。`
+            : `第 ${attempt} / ${maxAttempts} 轮失败，已达到重试上限。`;
+          upsertRetryItem(
+            attempt,
+            {
+              status: "error",
+              body: `${data.error || message}${data.will_retry ? " 即将自动重试。" : " 已达到重试上限。"}`,
+            },
+            maxAttempts,
+          );
+          return;
+        }
+
+        if (type === "error") {
+          if (attempt) {
+            retryState.final = true;
+            retryState.summary = `第 ${attempt} / ${maxAttempts} 轮执行中断：${message}`;
+            upsertRetryItem(
+              attempt,
+              {
+                status: "error",
+                body: message,
+              },
+              maxAttempts,
+            );
+            return;
+          }
+          retryState.final = true;
+          retryState.summary = `任务失败：${message}`;
+          renderRetryState();
+        }
+      }
+
+      function defaultProxyResultText(stage, linkType = $("linkType").value) {
+        if (stage === "provider" && linkType === "hosted") return "hosted 模式不使用 provider 代理。";
+        return `尚未检测 ${stage} 代理。`;
+      }
+
+      function setProxyResult(stage, text, kind = "") {
+        const target = stage === "provider" ? $("providerProxyResult") : $("checkoutProxyResult");
+        target.textContent = text;
+        target.className = `proxy-result${kind ? ` ${kind}` : ""}`;
+      }
+
+      function base64UrlDecode(value) {
+        const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+        const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+        return decodeURIComponent(
+          atob(padded)
+            .split("")
+            .map((char) => "%" + ("00" + char.charCodeAt(0).toString(16)).slice(-2))
+            .join(""),
+        );
+      }
+
+      function findEmail(value) {
+        if (!value) return "";
+        if (typeof value === "string") {
+          const trimmed = value.trim();
+          const match = trimmed.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+          return match ? match[0] : "";
+        }
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            const email = findEmail(item);
+            if (email) return email;
+          }
+          return "";
+        }
+        if (typeof value === "object") {
+          for (const key of ["email", "mail", "user_email"]) {
+            if (typeof value[key] === "string" && value[key].trim()) return value[key].trim();
+          }
+          for (const item of Object.values(value)) {
+            const email = findEmail(item);
+            if (email) return email;
+          }
+        }
+        return "";
+      }
+
+      function findToken(value) {
+        if (!value) return "";
+        if (typeof value === "string") return value.trim();
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            const token = findToken(item);
+            if (token) return token;
+          }
+        }
+        if (typeof value === "object") {
+          for (const key of ["accessToken", "access_token", "token"]) {
+            if (typeof value[key] === "string" && value[key].trim()) return value[key].trim();
+          }
+          for (const item of Object.values(value)) {
+            const token = findToken(item);
+            if (token) return token;
+          }
+        }
+        return "";
+      }
+
+      function readAccessTokenInput() {
+        const raw = $("accessToken").value.trim();
+        if (!raw) return "";
+        if (raw.startsWith("{") || raw.startsWith("[")) {
+          try {
+            return findToken(JSON.parse(raw)) || raw;
+          } catch {
+            return raw;
+          }
+        }
+        return raw;
+      }
+
+      function readTokenMeta() {
+        const raw = $("accessToken").value.trim();
+        let email = "";
+        let token = "";
+        if (!raw) return { email, token };
+        if (raw.startsWith("{") || raw.startsWith("[")) {
+          try {
+            const parsed = JSON.parse(raw);
+            email = findEmail(parsed);
+            token = findToken(parsed);
+          } catch {
+            email = findEmail(raw);
+            token = raw;
+          }
+        } else {
+          email = findEmail(raw);
+          token = raw;
+        }
+
+        if (token.includes(".")) {
+          try {
+            const payload = JSON.parse(base64UrlDecode(token.split(".")[1] || ""));
+            const profile = payload["https://api.openai.com/profile"] || {};
+            email = email || profile.email || payload.email || "";
+          } catch {
+            // token 可能不是 JWT，忽略解析失败，保留前面从 session JSON 中读到的邮箱。
+          }
+        }
+        return { email, token };
+      }
+
+      function updateTokenMeta() {
+        const meta = readTokenMeta();
+        currentInputEmail = meta.email || "";
+        updateDetectedEmailBanner(currentInputEmail);
+        if (!meta.token && !currentInputEmail) {
+          $("tokenMeta").textContent = "";
+          return;
+        }
+        if (currentInputEmail) {
+          $("tokenMeta").textContent = `已识别 token，检测到邮箱：${currentInputEmail}`;
+          return;
+        }
+        $("tokenMeta").textContent = meta.token.includes(".") ? "已识别 token，未检测到邮箱。" : "";
+      }
+
+      async function fetchBrowserSession() {
+        fetchBrowserSessionButton.disabled = true;
+        setStatus("正在尝试读取当前浏览器 session...");
+
+        try {
+          const response = await fetch(CHATGPT_SESSION_URL, {
+            method: "GET",
+            credentials: "include",
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          });
+
+          if (!response.ok) {
+            if (response.status === 401) {
+              throw new Error("当前浏览器还没有登录 ChatGPT。");
+            }
+            throw new Error(`session 接口返回 ${response.status}`);
+          }
+
+          const text = await response.text();
+          let payload = null;
+          try {
+            payload = JSON.parse(text);
+          } catch {
+            throw new Error("session 接口没有返回可解析的 JSON。");
+          }
+
+          if (!payload || (typeof payload === "object" && Object.keys(payload).length === 0)) {
+            throw new Error("session 接口返回为空，当前浏览器可能没有有效会话。");
+          }
+
+          $("accessToken").value = JSON.stringify(payload, null, 2);
+          updateTokenMeta();
+          setStatus("已获取当前浏览器 session。");
+        } catch (error) {
+          const raw = error instanceof Error ? error.message : String(error);
+          const message = /Failed to fetch|NetworkError|Load failed/i.test(raw)
+            ? "当前页面无法直接读取 chatgpt.com session，通常是跨域限制、第三方 Cookie 隔离，或当前浏览器未登录 ChatGPT。"
+            : raw;
+          setStatus(message, true);
+        } finally {
+          fetchBrowserSessionButton.disabled = false;
+        }
+      }
+
+      async function copySessionUrl() {
+        await navigator.clipboard.writeText(CHATGPT_SESSION_URL);
+        setStatus("session 地址已复制。");
+      }
+
+      function openSessionPage() {
+        window.open(CHATGPT_SESSION_URL, "_blank", "noopener,noreferrer");
+        setStatus("已打开 session 页面。");
+      }
+
+      function fillCountries() {
+        const select = $("billingCountry");
+        select.innerHTML = "";
+        for (const [code, label] of COUNTRIES) {
+          const option = document.createElement("option");
+          option.value = code;
+          option.textContent = label;
+          if (code === "US") option.selected = true;
+          select.appendChild(option);
+        }
+      }
+
+      function updateCurrency() {
+        const selected = COUNTRIES.find(([code]) => code === $("billingCountry").value);
+        $("currency").value = selected ? selected[2] : "USD";
+      }
+
+      function formatDuration(ms) {
+        const value = Math.max(0, Number(ms) || 0);
+        if (value < 1000) return `${Math.round(value)}ms`;
+        if (value < 60000) return `${(value / 1000).toFixed(1)}s`;
+        const minutes = Math.floor(value / 60000);
+        const seconds = Math.round((value % 60000) / 1000);
+        return `${minutes}m ${seconds}s`;
+      }
+
+      function createRunMetrics() {
+        return {
+          startedAt: 0,
+          finishedAt: 0,
+          currentRawStep: "",
+          stepTiming: new Map(),
+          attempt: 0,
+          maxAttempts: 0,
+          approveAttempts: 0,
+          approveRendered: 0,
+          approvePoolSize: clampApprovePoolSize($("approvePoolSize")?.value || DEFAULT_APPROVE_POOL_SIZE),
+          approvePoolMaxAttempts: clampApprovePoolMaxAttempts($("approvePoolMaxAttempts")?.value || DEFAULT_APPROVE_POOL_MAX_ATTEMPTS),
+          approveResult: "pending",
+          finalOk: null,
+        };
+      }
+
+      function ensureRunMetrics() {
+        if (!runMetrics) runMetrics = createRunMetrics();
+        return runMetrics;
+      }
+
+      function startElapsedTimer() {
+        if (elapsedTimer) clearInterval(elapsedTimer);
+        elapsedTimer = setInterval(() => {
+          refreshRunOverview();
+          renderSteps();
+        }, 350);
+      }
+
+      function stopElapsedTimer() {
+        if (elapsedTimer) clearInterval(elapsedTimer);
+        elapsedTimer = null;
+      }
+
+      function resetRunMetrics({ start = false } = {}) {
+        stopElapsedTimer();
+        if (approveCounterAnimation) cancelAnimationFrame(approveCounterAnimation);
+        approveCounterAnimation = null;
+        runMetrics = createRunMetrics();
+        if (start) {
+          runMetrics.startedAt = performance.now();
+          startElapsedTimer();
+        }
+        updateMetricText("approveCountMetric", "0", false);
+        refreshRunOverview();
+      }
+
+      function updateMetricText(id, value, bump = true) {
+        const node = $(id);
+        if (!node) return;
+        const next = String(value);
+        if (node.textContent === next) return;
+        node.textContent = next;
+        if (bump) {
+          node.classList.remove("bump");
+          void node.offsetWidth;
+          node.classList.add("bump");
+        }
+      }
+
+      function animateApproveCounter(target) {
+        const metrics = ensureRunMetrics();
+        const end = Math.max(0, Number.parseInt(String(target || 0), 10) || 0);
+        const start = Math.max(0, Number(metrics.approveRendered) || 0);
+        if (end === start) return;
+        if (approveCounterAnimation) cancelAnimationFrame(approveCounterAnimation);
+        const started = performance.now();
+        const duration = 420;
+        const step = (now) => {
+          const progress = Math.min(1, (now - started) / duration);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const current = Math.round(start + (end - start) * eased);
+          metrics.approveRendered = current;
+          updateMetricText("approveCountMetric", String(current), progress === 1);
+          if (progress < 1) {
+            approveCounterAnimation = requestAnimationFrame(step);
+          } else {
+            approveCounterAnimation = null;
+            metrics.approveRendered = end;
+            updateMetricText("approveCountMetric", String(end), true);
+          }
+        };
+        approveCounterAnimation = requestAnimationFrame(step);
+      }
+
+      function setApproveMetricState(result, detail = "") {
+        const value = String(result || "pending").trim() || "pending";
+        const lower = value.toLowerCase();
+        const node = $("approveStateMetric");
+        updateMetricText("approveStateMetric", value, true);
+        node.classList.toggle("success", lower === "approved");
+        node.classList.toggle("error", lower === "blocked" || lower === "failed" || lower === "error");
+        $("approveStateSub").textContent = detail || (lower === "approved" ? "已命中，等待 redirect" : lower === "pending" ? "等待 approve 结果" : "继续观察后续轮询");
+      }
+
+      function refreshRunOverview() {
+        const metrics = ensureRunMetrics();
+        const hasStarted = Boolean(metrics.startedAt);
+        const now = performance.now();
+        const end = metrics.finishedAt || now;
+        const elapsed = hasStarted ? end - metrics.startedAt : 0;
+        updateMetricText("totalElapsedMetric", formatDuration(elapsed), false);
+        $("totalElapsedSub").textContent = hasStarted ? (metrics.finishedAt ? "流程已结束" : "流程运行中") : "等待开始";
+        const attemptText = metrics.maxAttempts ? `${metrics.attempt || 0}/${metrics.maxAttempts}` : `${metrics.attempt || 0}/0`;
+        updateMetricText("attemptMetric", attemptText, false);
+        $("attemptSub").textContent = metrics.attempt ? `第 ${metrics.attempt} 轮执行中` : "自动重试状态";
+        $("approvePoolSub").textContent = `池 ${metrics.approvePoolSize || 0} 路 / 上限 ${metrics.approvePoolMaxAttempts || 0} 次`;
+        setApproveMetricState(metrics.approveResult || "pending");
+      }
+
+      function eventStatus(item) {
+        const data = item.data || {};
+        if (item.type === "error" || item.step === "fallback" || data.ok === false) return "error";
+        if (item.step === "done" || item.type === "result") return "done";
+        return "current";
+      }
+
+      function trackRunEvent(item) {
+        if (!item) return;
+        const data = item.data || {};
+        if (data.reset_steps) resetRunMetrics({ start: true });
+        const metrics = ensureRunMetrics();
+        if (!metrics.startedAt) {
+          metrics.startedAt = performance.now();
+          startElapsedTimer();
+        }
+
+        const now = performance.now();
+        const step = String(item.step || "");
+        const attempt = Number.parseInt(String(data.attempt || ""), 10);
+        const maxAttempts = Number.parseInt(String(data.max_attempts || ""), 10);
+        if (Number.isFinite(attempt) && attempt > 0) metrics.attempt = attempt;
+        if (Number.isFinite(maxAttempts) && maxAttempts > 0) metrics.maxAttempts = maxAttempts;
+
+        const poolSize = Number.parseInt(String(data.approve_pool_size || ""), 10);
+        const poolMax = Number.parseInt(String(data.approve_pool_max_attempts || ""), 10);
+        if (Number.isFinite(poolSize) && poolSize > 0) metrics.approvePoolSize = poolSize;
+        if (Number.isFinite(poolMax) && poolMax > 0) metrics.approvePoolMaxAttempts = poolMax;
+
+        const approveAttempt = Number.parseInt(String(data.approve_attempt || ""), 10);
+        if (Number.isFinite(approveAttempt) && approveAttempt > metrics.approveAttempts) {
+          metrics.approveAttempts = approveAttempt;
+          animateApproveCounter(approveAttempt);
+        }
+
+        const approveResult = String(data.approve_result || data.result || "").trim();
+        if (approveResult) metrics.approveResult = approveResult;
+
+        if (step) {
+          if (metrics.currentRawStep && metrics.currentRawStep !== step) {
+            const previous = metrics.stepTiming.get(metrics.currentRawStep);
+            if (previous && !previous.end) previous.end = now;
+          }
+          const timing = metrics.stepTiming.get(step) || { start: now, end: 0, status: "pending", message: "" };
+          if (!timing.start) timing.start = now;
+          timing.last = now;
+          timing.status = eventStatus(item);
+          timing.message = item.message || timing.message || STEP_LIBRARY[step]?.description || "";
+          if (timing.status === "done" || timing.status === "error") timing.end = now;
+          metrics.stepTiming.set(step, timing);
+          metrics.currentRawStep = step;
+        }
+
+        if (step === "done" || item.type === "result" || item.type === "error" || item.type === "cancelled") {
+          metrics.finishedAt = now;
+          if (typeof data.ok === "boolean") metrics.finalOk = data.ok;
+          stopElapsedTimer();
+        }
+
+        refreshRunOverview();
+      }
+
+      function visibleSteps() {
+        return FLOW_STEPS[$("linkType").value] || FLOW_STEPS.hosted;
+      }
+
+      function statusLabel(status) {
+        const labels = {
+          pending: "待执行",
+          current: "进行中",
+          done: "成功",
+          skipped: "跳过",
+          error: "失败",
+        };
+        return labels[status] || "待执行";
+      }
+
+      function visibleFlowGroups() {
+        const visible = new Set(visibleSteps());
+        return DISPLAY_FLOW_GROUPS.filter((group) => group.steps.some((step) => visible.has(step)));
+      }
+
+      function groupForStep(step) {
+        return visibleFlowGroups().find((group) => group.steps.includes(step)) || null;
+      }
+
+      function groupTiming(group) {
+        const metrics = ensureRunMetrics();
+        const timings = group.steps.map((step) => metrics.stepTiming.get(step)).filter(Boolean);
+        if (!timings.length) return "";
+        const start = Math.min(...timings.map((item) => item.start || Infinity));
+        if (!Number.isFinite(start)) return "";
+        const active = timings.some((item) => !item.end && item.status === "current");
+        const end = active ? performance.now() : Math.max(...timings.map((item) => item.end || item.last || start));
+        return formatDuration(end - start);
+      }
+
+      function groupMessage(group) {
+        const metrics = ensureRunMetrics();
+        for (const step of [...group.steps].reverse()) {
+          const timing = metrics.stepTiming.get(step);
+          if (timing?.message) return timing.message;
+          const state = stepState.get(step);
+          if (state?.message) return state.message;
+        }
+        return group.description;
+      }
+
+      function groupStatus(group) {
+        const metrics = ensureRunMetrics();
+        if (group.key === "result" && metrics.finalOk === false) return "error";
+        const states = group.steps.map((step) => stepState.get(step)?.status || metrics.stepTiming.get(step)?.status || "pending");
+        if (states.includes("error")) return "error";
+        if (states.includes("current")) return "current";
+        if (states.some((status) => status === "done")) {
+          const unfinished = states.some((status) => status === "pending" || status === "current");
+          return unfinished ? "current" : "done";
+        }
+        if (states.every((status) => status === "skipped")) return "skipped";
+        return "pending";
+      }
+
+      function renderSteps() {
+        const groups = visibleFlowGroups();
+        const grid = $("stepGrid");
+        grid.innerHTML = "";
+
+        let completed = 0;
+        for (const group of groups) {
+          const status = groupStatus(group);
+          if (status === "done" || status === "skipped") completed += 1;
+
+          const card = document.createElement("div");
+          card.className = `step-card ${status}`;
+
+          const headline = document.createElement("div");
+          headline.className = "step-card-headline";
+          const title = document.createElement("strong");
+          title.textContent = group.label;
+          const duration = document.createElement("span");
+          duration.className = "step-duration";
+          duration.textContent = groupTiming(group);
+          headline.append(title, duration);
+
+          const statusNode = document.createElement("div");
+          statusNode.className = `step-status ${status}`;
+          statusNode.textContent = statusLabel(status);
+
+          const message = document.createElement("div");
+          message.className = "step-message";
+          message.textContent = groupMessage(group);
+
+          card.append(headline, statusNode, message);
+          grid.appendChild(card);
+        }
+
+        const currentGroup = groupForStep(currentStepKey);
+        const currentMeta = currentGroup || { label: "尚未开始", description: "点击生成后开始更新。" };
+        $("currentStepTitle").innerHTML = `<strong>${currentMeta.label}</strong>`;
+        $("currentStepDetail").textContent = currentGroup ? groupMessage(currentGroup) : currentMeta.description;
+        $("stepMetric").textContent = `${completed} / ${groups.length}`;
+        $("flowSummarySub").textContent = currentGroup ? `${completed}/${groups.length} · 当前：${currentGroup.label}` : `${completed}/${groups.length} · 等待开始`;
+        $("stepProgress").style.width = `${groups.length ? Math.round((completed / groups.length) * 100) : 0}%`;
+      }
+
+      function resetStepState() {
+        stepState.clear();
+        currentStepKey = "";
+        renderSteps();
+      }
+
+      function finalizeRemainingSteps() {
+        for (const key of visibleSteps()) {
+          if (!stepState.has(key)) {
+            stepState.set(key, {
+              status: key === "chatgpt_approve" || key === "fallback" ? "skipped" : "pending",
+              message: STEP_LIBRARY[key].description,
+            });
+          }
+        }
+      }
+
+      function updateStepFromEvent(item) {
+        const step = item.step;
+        const data = item.data || {};
+        if (step === "retry") return;
+        if (!step || !STEP_LIBRARY[step]) return;
+
+        if (data.reset_steps) {
+          stepState.clear();
+          currentStepKey = "";
+        }
+
+        const keys = visibleSteps();
+        const index = keys.indexOf(step);
+        if (index >= 0) {
+          for (let i = 0; i < index; i += 1) {
+            const key = keys[i];
+            const existing = stepState.get(key);
+            if (!existing || existing.status === "pending" || existing.status === "current") {
+              stepState.set(key, {
+                status: "done",
+                message: existing?.message || STEP_LIBRARY[key].description,
+              });
+            }
+          }
+        }
+
+        currentStepKey = step;
+        const isDone = step === "done";
+        const isFallback = step === "fallback";
+        stepState.set(step, {
+          status: item.type === "error" || isFallback ? "error" : isDone ? "done" : "current",
+          message: item.message || STEP_LIBRARY[step].description,
+        });
+
+        if (isDone) {
+          finalizeRemainingSteps();
+          for (const key of keys) {
+            const existing = stepState.get(key);
+            if (key === "fallback" && existing?.status === "error") continue;
+            if (existing && (existing.status === "pending" || existing.status === "current")) {
+              stepState.set(key, { ...existing, status: key === "chatgpt_approve" || key === "fallback" ? "skipped" : "done" });
+            }
+          }
+        }
+
+        renderSteps();
+      }
+
+      function proxyForRegion(proxyUrl, region) {
+        const value = String(proxyUrl || "").trim();
+        const code = String(region || "").trim().toUpperCase();
+        if (!value || !code || !value.includes("region-")) return value;
+        return value.replace(/region-[A-Za-z]{2}/i, `region-${code}`);
+      }
+
+      function syncProviderProxyForBillingCountry() {
+        if ($("linkType").value !== "paypal") return;
+        const country = $("billingCountry").value || "US";
+        const checkoutProxy = $("checkoutProxy").value.trim() || DEFAULT_CHECKOUT_PROXY;
+        $("providerProxy").value = proxyForRegion(checkoutProxy, country);
+      }
+
+      function resetApproveResultStatus(text = "尚未执行 approve") {
+        const node = $("approveResultStatus");
+        node.textContent = text;
+        node.className = "approve-result pending";
+        if (runMetrics) runMetrics.approveResult = "pending";
+        setApproveMetricState("pending");
+      }
+
+      function setApproveResultStatus(value, attemptLabel = "") {
+        const node = $("approveResultStatus");
+        const normalized = String(value || "").trim().toLowerCase();
+        const suffix = attemptLabel ? `（${attemptLabel}）` : "";
+        const metricDetail = attemptLabel || "";
+        if (normalized === "approved") {
+          node.textContent = `approve_result = "approved"${suffix}`;
+          node.className = "approve-result approved";
+          if (runMetrics) runMetrics.approveResult = "approved";
+          setApproveMetricState("approved", metricDetail || "已命中，等待 redirect");
+          return;
+        }
+        if (normalized === "blocked") {
+          node.textContent = `approve_result = "blocked"${suffix}`;
+          node.className = "approve-result blocked";
+          if (runMetrics) runMetrics.approveResult = "blocked";
+          setApproveMetricState("blocked", metricDetail || "返回 blocked，继续重试");
+          return;
+        }
+        if (!normalized || normalized === "unknown" || normalized === "pending") {
+          node.textContent = "尚未收到 approve_result";
+          node.className = "approve-result pending";
+          if (runMetrics) runMetrics.approveResult = "pending";
+          setApproveMetricState("pending");
+          return;
+        }
+        node.textContent = `approve_result = "${value}"${suffix}`;
+        node.className = "approve-result failed";
+        if (runMetrics) runMetrics.approveResult = String(value || "failed");
+        setApproveMetricState(value || "failed", metricDetail || "非 approved 结果");
+      }
+
+      function updateLockedCountry() {
+        const linkType = $("linkType").value;
+        const lockedCountry = LOCKED_COUNTRY_BY_TYPE[linkType] || "";
+        const maxRetries = clampMaxRetries($("maxRetries").value);
+        if (lockedCountry) {
+          $("billingCountry").value = lockedCountry;
+          $("billingCountry").disabled = true;
+        } else {
+          $("billingCountry").disabled = false;
+          if (!$("billingCountry").value) $("billingCountry").value = linkType === "paypal" ? "US" : "US";
+        }
+        if (linkType === "paypal") {
+          applyPaymentStrategyFields();
+        } else {
+          syncProviderProxyForBillingCountry();
+        }
+
+        const providerDisabled = linkType === "hosted";
+        checkProviderProxyButton.disabled = providerDisabled;
+        $("providerProxyHint").textContent = providerDisabled
+          ? "hosted 模式不使用 provider 代理。"
+          : "当前链类型会使用这一段代理执行 Stripe/provider 阶段。";
+        setProxyResult("provider", defaultProxyResultText("provider", linkType));
+        $("guideSummary").textContent =
+          linkType === "paypal"
+            ? `会先用 checkout 代理创建 checkout，再用 provider 代理进入 Stripe，approve 回到 checkout 代理，最后解析 PayPal 真实 redirect URL。失败会自动重试，当前最多 ${maxRetries} 轮。`
+            : linkType === "gopay"
+              ? `会先向 ChatGPT 创建 checkout，再进入 Stripe，最后解析到 GoPay 的真实 redirect URL。失败会自动重试，当前最多 ${maxRetries} 轮。`
+              : "hosted 模式只生成 pay.openai.com 长链，不解析 provider 跳转。";
+        generateButton.textContent =
+          linkType === "paypal" ? "提取 PP 链" : linkType === "gopay" ? "提取 GoPay 链" : "生成支付长链";
+        applyQuickProxyState();
+        updateCurrency();
+        renderPrinciple();
+        resetStepState();
+      }
+
+      function loadProxyConfig() {
+        const defaults = defaultProxyConfig();
+        const raw = localStorage.getItem("openai_pay_long_link_proxy_config");
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            const parsedConfig = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+            applyProxyConfig({
+              ...defaults,
+              ...parsedConfig,
+              quick_proxy: Object.prototype.hasOwnProperty.call(parsedConfig, "quick_proxy") ? parsedConfig.quick_proxy : "",
+            });
+            return;
+          } catch {
+            localStorage.removeItem("openai_pay_long_link_proxy_config");
+          }
+        }
+
+        const legacy = localStorage.getItem("openai_pay_long_link_proxy") || "";
+        if (legacy) {
+          applyProxyConfig({
+            ...defaults,
+            quick_proxy: "",
+            checkout_proxy: legacy,
+            provider_proxy: legacy,
+          });
+          return;
+        }
+        applyProxyConfig(defaults);
+      }
+
+      function saveProxyConfig() {
+        const maxRetries = clampMaxRetries($("maxRetries").value);
+        const approveRetries = clampApproveRetries($("approveRetries").value);
+        const approvePoolSize = clampApprovePoolSize($("approvePoolSize").value);
+        const approvePoolMaxAttempts = clampApprovePoolMaxAttempts($("approvePoolMaxAttempts").value);
+        $("maxRetries").value = String(maxRetries);
+        $("approveRetries").value = String(approveRetries);
+        $("approvePoolSize").value = String(approvePoolSize);
+        $("approvePoolMaxAttempts").value = String(approvePoolMaxAttempts);
+        localStorage.setItem(
+          "openai_pay_long_link_proxy_config",
+          JSON.stringify({
+            quick_proxy: $("quickProxy").value.trim(),
+            checkout_proxy: $("checkoutProxy").value.trim(),
+            provider_proxy: $("providerProxy").value.trim(),
+            max_retries: maxRetries,
+            approve_retries: approveRetries,
+            approve_pool_size: approvePoolSize,
+            approve_pool_max_attempts: approvePoolMaxAttempts,
+            payment_strategy: $("paymentStrategy").value,
+          }),
+        );
+        setStatus("代理与重试配置已保存在本机浏览器。");
+      }
+
+      function clearProxyConfig() {
+        localStorage.removeItem("openai_pay_long_link_proxy_config");
+        localStorage.removeItem("openai_pay_long_link_proxy");
+        applyProxyConfig(defaultProxyConfig());
+        setProxyResult("checkout", defaultProxyResultText("checkout"));
+        setProxyResult("provider", defaultProxyResultText("provider", $("linkType").value));
+        resetRetryState(DEFAULT_MAX_RETRIES);
+        updateLockedCountry();
+        setStatus("已恢复默认代理与默认重试次数。");
+      }
+
+      function setLinkEnabled(enabled) {
+        copyButton.disabled = !enabled;
+        openLink.classList.toggle("disabled", !enabled);
+        openLink.href = enabled ? currentLongUrl : "";
+      }
+
+      function formatLogData(data) {
+        const entries = Object.entries(data || {}).filter(([, value]) => value !== "" && value !== null && value !== undefined);
+        if (!entries.length) return "";
+        return " " + JSON.stringify(Object.fromEntries(entries));
+      }
+
+      function appendLogPill(container, text, tone = "") {
+        if (!text) return;
+        const pill = document.createElement("span");
+        pill.className = `log-pill ${tone}`.trim();
+        pill.textContent = text;
+        container.appendChild(pill);
+      }
+
+      function appendLog(item) {
+        $("logPanel").classList.add("show");
+        const line = document.createElement("div");
+        const type = item.type || item.event || "log";
+        const ts = item.ts || new Date().toLocaleTimeString();
+        const data = item.data || {};
+        const step = item.step || "log";
+        const result = String(data.approve_result || data.result || "").trim();
+        const okTone = type === "error" || data.ok === false || result.toLowerCase() === "blocked" ? "error" : type === "result" || data.ok === true || result.toLowerCase() === "approved" ? "done" : "";
+        line.className = `log-line ${okTone}`;
+
+        const main = document.createElement("div");
+        main.className = "log-main";
+        const timeNode = document.createElement("span");
+        timeNode.className = "log-time";
+        timeNode.textContent = ts;
+        const stepNode = document.createElement("span");
+        stepNode.className = "log-step";
+        stepNode.textContent = step;
+        const messageNode = document.createElement("span");
+        messageNode.className = "log-message";
+        messageNode.textContent = item.message || "";
+        main.append(timeNode, stepNode, messageNode);
+        line.appendChild(main);
+
+        const meta = document.createElement("div");
+        meta.className = "log-meta";
+        if (data.attempt || data.max_attempts) appendLogPill(meta, `轮次 ${data.attempt || 0}/${data.max_attempts || 0}`);
+        if (data.approve_attempt || data.approve_pool_max_attempts || data.approve_max_attempts) {
+          appendLogPill(meta, `approve ${data.approve_attempt || 0}/${data.approve_pool_max_attempts || data.approve_max_attempts || 0}`);
+        }
+        if (data.approve_pool_size) appendLogPill(meta, `池 ${data.approve_pool_size} 路`);
+        if (result) appendLogPill(meta, `approve_result=${result}`, result.toLowerCase() === "approved" ? "ok" : result.toLowerCase() === "blocked" ? "error" : "");
+        if (typeof data.ok === "boolean") appendLogPill(meta, data.ok ? "成功" : "失败", data.ok ? "ok" : "error");
+        if (data.actual_protocol) appendLogPill(meta, `代理 ${data.actual_protocol}`);
+        if (meta.childElementCount) line.appendChild(meta);
+
+        const details = Object.entries(data).filter(([, value]) => value !== "" && value !== null && value !== undefined);
+        if (details.length) {
+          const pre = document.createElement("pre");
+          pre.className = "log-data";
+          pre.textContent = JSON.stringify(Object.fromEntries(details), null, 2);
+          line.appendChild(pre);
+        }
+
+        $("logList").appendChild(line);
+        $("logList").scrollTop = $("logList").scrollHeight;
+        trackRunEvent(item);
+        applyApproveHint(item);
+        syncRetryStateFromEvent(item);
+        updateStepFromEvent(item);
+      }
+
+      function clearLog() {
+        $("logList").innerHTML = "";
+        $("logPanel").classList.remove("show");
+        resetStepState();
+        resetRetryState(clampMaxRetries($("maxRetries").value));
+        resetRunMetrics();
+        resetApproveResultStatus();
+      }
+
+      function buildRequestPayload(accessToken) {
+        const checkoutProxy = $("checkoutProxy").value.trim();
+        const providerProxy = $("providerProxy").value.trim();
+        return {
+          accessToken,
+          proxy: checkoutProxy,
+          checkout_proxy: checkoutProxy,
+          provider_proxy: providerProxy,
+          link_type: $("linkType").value,
+          billing_country: $("billingCountry").value,
+          checkout_ui_mode: $("checkoutMode").value,
+          payment_locale: $("paymentLocale").value,
+          stripe_publishable_key: $("stripeKey").value.trim(),
+          device_id: $("deviceId").value.trim(),
+          user_agent: $("userAgent").value.trim(),
+          maxRetries: clampMaxRetries($("maxRetries").value),
+          approveRetries: clampApproveRetries($("approveRetries").value),
+          approvePoolSize: clampApprovePoolSize($("approvePoolSize").value),
+          approvePoolMaxAttempts: clampApprovePoolMaxAttempts($("approvePoolMaxAttempts").value),
+          paymentStrategy: $("paymentStrategy").value,
+          taskId: currentTaskId,
+        };
+      }
+
+      function approveAttemptLabel(data) {
+        const attempt = Number.parseInt(String(data.approve_attempt || ""), 10);
+        const maxAttempts = Number.parseInt(String(data.approve_max_attempts || data.approve_pool_max_attempts || ""), 10);
+        if (!Number.isFinite(attempt) || !Number.isFinite(maxAttempts) || attempt <= 0 || maxAttempts <= 0) {
+          return "";
+        }
+        return `第 ${attempt}/${maxAttempts} 次`;
+      }
+
+      function applyApproveHint(item) {
+        if (!item) return;
+        const data = item.data || {};
+        const step = String(item.step || "");
+        if (step !== "chatgpt_approve" && step !== "redirect_poll") return;
+        const message = String(item.message || "");
+        const result = String(data.approve_result || data.result || "").trim();
+        const errorText = String(data.error || "").trim().toLowerCase();
+        const attemptLabel = approveAttemptLabel(data);
+
+        if (result) setApproveResultStatus(result, attemptLabel);
+
+        if (step !== "chatgpt_approve") return;
+
+        if (result.toLowerCase() === "approved" || message.includes("approve 已通过")) {
+          setStatus(`approve_result="approved"${attemptLabel ? `（${attemptLabel}）` : ""}，正在等待 Stripe / PayPal 跳转。`);
+          return;
+        }
+
+        if (result.toLowerCase() === "blocked" || errorText.includes("blocked") || message.includes("blocked")) {
+          setStatus(`approve_result="blocked"${attemptLabel ? `（${attemptLabel}）` : ""}，程序会继续按重试策略处理。`, true);
+        }
+      }
+
+      function formatProxyCheck(item) {
+        const parts = [];
+        if (item.selection_source) parts.push(`来源=${item.selection_source}`);
+        if (item.proxy_hint) parts.push(`选中=${item.proxy_hint}`);
+        if (item.ip) parts.push(`IP=${item.ip}`);
+        if (item.country) parts.push(`国家=${item.country}`);
+        if (item.city) parts.push(`城市=${item.city}`);
+        if (item.protocol) parts.push(`协议=${item.protocol}`);
+        if (item.isp || item.org) parts.push(`运营商=${item.isp || item.org}`);
+        const prefix = item.label || item.stage || "代理";
+        if (item.ok) return `${prefix}代理有效：${parts.join("；") || "已连通"}`;
+        return `${prefix}代理检测失败：${item.error || "未知错误"}`;
+      }
+
+      function runtimeProxyPayload() {
+        return {
+          link_type: $("linkType").value,
+          proxy: $("checkoutProxy").value.trim(),
+          checkout_proxy: $("checkoutProxy").value.trim(),
+          provider_proxy: $("providerProxy").value.trim(),
+        };
+      }
+
+      async function checkProxyStage(stage) {
+        const button = stage === "provider" ? checkProviderProxyButton : checkCheckoutProxyButton;
+        button.disabled = true;
+        const linkType = $("linkType").value;
+        appendLog({ step: "proxy_check", message: `开始检测 ${stage} 代理。`, data: {} });
+        setStatus(`正在检测 ${stage} 代理...`);
+        setProxyResult(stage, `正在检测 ${stage} 代理...`);
+
+        try {
+          const response = await fetch("/api/check-proxy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              stage,
+              link_type: linkType,
+              proxy: $("checkoutProxy").value.trim(),
+              proxy_input: stage === "provider" ? $("providerProxy").value.trim() : $("checkoutProxy").value.trim(),
+              checkout_proxy: $("checkoutProxy").value.trim(),
+              provider_proxy: $("providerProxy").value.trim(),
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.detail || data.message || "代理检测请求失败。");
+          }
+          for (const item of data.checks || []) {
+            appendLog({
+              type: item.ok ? "result" : "error",
+              step: item.stage || "proxy_check",
+              message: formatProxyCheck(item),
+              data: { proxy: item.proxy_hint || "", source: item.source || "" },
+            });
+          }
+          const resultText = (data.checks || []).map(formatProxyCheck).join("\n") || data.message || `${stage} 代理检测完成。`;
+          setProxyResult(stage, resultText, data.ok ? "ok" : "error");
+          setStatus(data.ok ? `${stage} 代理检测完成。` : data.message || `${stage} 代理检测失败。`, !data.ok);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          appendLog({ type: "error", step: "proxy_check", message, data: {} });
+          setProxyResult(stage, message, "error");
+          setStatus(message, true);
+        } finally {
+          button.disabled = stage === "provider" && $("linkType").value === "hosted";
+        }
+      }
+
+      async function checkRuntimeProxy() {
+        checkRuntimeProxyButton.disabled = true;
+        appendLog({ step: "proxy_check", message: "开始检测本次运行将使用的全部代理。", data: {} });
+        setStatus("正在检测本次运行代理...");
+        setProxyResult("checkout", "正在检测 checkout 阶段代理...");
+        setProxyResult("provider", $("linkType").value === "hosted" ? "hosted 模式不使用 provider 代理。" : "正在检测 provider 阶段代理...");
+
+        try {
+          const response = await fetch("/api/check-proxy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(runtimeProxyPayload()),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.detail || data.message || "运行代理检测请求失败。");
+          }
+
+          const grouped = new Map();
+          for (const item of data.checks || []) {
+            grouped.set(item.stage, formatProxyCheck(item));
+            appendLog({
+              type: item.ok ? "result" : "error",
+              step: item.stage || "proxy_check",
+              message: formatProxyCheck(item),
+              data: {
+                proxy: item.proxy_hint || "",
+                selection_source: item.selection_source || "",
+                source: item.source || "",
+              },
+            });
+          }
+
+          setProxyResult("checkout", grouped.get("checkout") || "未返回 checkout 阶段信息。", data.ok ? "ok" : "error");
+          if ($("linkType").value === "hosted") {
+            setProxyResult("provider", "hosted 模式不使用 provider 代理。");
+          } else {
+            setProxyResult("provider", grouped.get("provider") || "未返回 provider 阶段信息。", data.ok ? "ok" : "error");
+          }
+          setStatus(data.ok ? "本次运行代理检测完成。" : data.message || "本次运行代理检测失败。", !data.ok);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          appendLog({ type: "error", step: "proxy_check", message, data: {} });
+          setProxyResult("checkout", message, "error");
+          if ($("linkType").value !== "hosted") setProxyResult("provider", message, "error");
+          setStatus(message, true);
+        } finally {
+          checkRuntimeProxyButton.disabled = false;
+          checkProviderProxyButton.disabled = $("linkType").value === "hosted";
+        }
+      }
+
+      function renderResult(data) {
+        applyRetryHistory(data.retry_history, data);
+        currentLongUrl = data.long_url || "";
+        $("longUrl").textContent = currentLongUrl;
+        $("summary").textContent = `${data.cs_id || ""} / ${data.billing_country || ""} / ${data.currency || ""} / ${data.link_type || ""} / 第 ${data.attempt_count || 1} 轮`;
+        const maxAttempts = clampMaxRetries(data.max_attempts || $("maxRetries").value);
+        const attemptCount = Number.parseInt(String(data.attempt_count || 1), 10) || 1;
+        const linkLabel =
+          data.link_type === "paypal" ? "PP 链" : data.link_type === "gopay" ? "GoPay 链" : "hosted 长链";
+        const isPaypalBa = String(data.long_url || "").includes("paypal.com/agreements/approve");
+        $("extractStatus").textContent = data.ok && isPaypalBa
+          ? `第 ${attemptCount} / ${maxAttempts} 轮成功拿到 PayPal BA 链。`
+          : data.ok
+            ? `第 ${attemptCount} / ${maxAttempts} 轮成功生成${linkLabel === "hosted 长链" ? "" : " "} ${linkLabel}。`
+            : data.fallback
+              ? `已重试 ${attemptCount} 轮，仍未拿到 PayPal BA 链；若只剩 pay.openai.com/c/pay/cs_live_... 视为失败。`
+              : data.provider_error || "提取失败。";
+        if (data.link_type === "paypal") {
+          if (data.approve_result) {
+            setApproveResultStatus(data.approve_result);
+          } else if (isPaypalBa) {
+            setApproveResultStatus("approved");
+          } else if (data.fallback) {
+            setApproveResultStatus(data.provider_error ? "failed" : "unknown");
+          }
+        }
+        $("providerUrl").textContent = data.provider_redirect_url || "";
+        $("stripeRedirectUrl").textContent = data.stripe_redirect_url || "";
+        $("stripeUrl").textContent = data.stripe_hosted_url || "";
+        $("result").classList.add("show");
+        setLinkEnabled(Boolean(currentLongUrl));
+      }
+
+      function shouldTrackEmailStats(linkType) {
+        return linkType === "paypal" || linkType === "gopay";
+      }
+
+      function principleSections(linkType) {
+        if (linkType === "hosted") {
+          return {
+            title: "Hosted 长链生成原理",
+            intro: "hosted 模式不会继续提取 PayPal / GoPay，而是生成可直接打开的 pay.openai.com 长链。",
+            sections: [
+              ["读取输入", "前端解析 access_token，读取 checkout 代理、地区、语言和 Stripe key。"],
+              ["创建 checkout", "后端用 checkout 代理请求 ChatGPT `/backend-api/payments/checkout`，拿到 `cs_id`、地区、币种和 processor_entity。"],
+              ["初始化 Stripe", "再请求 Stripe `payment_pages/{cs_id}/init`，返回 `stripe_hosted_url`。"],
+              ["转换 hosted 长链", "把 `https://checkout.stripe.com/...` 改写成 `https://pay.openai.com/...`，这就是最终 hosted 长链。"],
+              ["返回结果", "前端展示长链、CS ID、地区、币种与原始 Stripe URL。"],
+            ],
+          };
+        }
+
+        if (linkType === "gopay") {
+          return {
+            title: "GoPay 链生成原理",
+            intro: "GoPay 与 PP 链流程相似，但支付地址资料和 payment method 类型会改成印尼 GoPay。provider 提取失败时不会直接当成功，而是自动重试直到上限。",
+            sections: [
+              ["读取输入", "前端读取 access_token、checkout 代理、provider 代理。provider 为空时，后端会使用 GoPay provider 兜底代理。"],
+              ["ChatGPT 创建 checkout", "后端用 checkout 代理请求 ChatGPT checkout，返回 `cs_id`、币种与 processor_entity。GoPay 会锁定印尼地址和 IDR。"],
+              ["使用 provider 代理", "checkout 创建完成后，Stripe 与后续外部跳转链会使用 provider 代理；ChatGPT approve 仍保持 checkout 代理。"],
+              ["Stripe init", "切到 provider 代理后，请求 Stripe `payment_pages/{cs_id}/init`，拿到 hosted checkout URL 与后续上下文。"],
+              ["生成印尼支付资料", "后端随机生成印尼姓名、邮箱、地址，作为 GoPay payment method 的账单资料。"],
+              ["创建 GoPay payment method", "向 Stripe `POST /v1/payment_methods`，`type=gopay`，生成 `pm_xxx`。"],
+              ["Confirm checkout", "再向 Stripe `POST /v1/payment_pages/{cs_id}/confirm`，要求 Stripe 返回 GoPay redirect。"],
+              ["可选 ChatGPT approve", "如果 Stripe 返回 `requires_approval`，后端会回到 ChatGPT 侧执行 `checkout/approve`。"],
+              ["轮询并解析 redirect", "轮询 Stripe payment page，取到 Stripe redirect URL 后继续跟外部跳转，直到定位最终 GoPay 跳转。"],
+              ["失败重试与最终结果", "单轮 provider 提取失败时，这一轮只算失败，不会直接当成功。系统会自动重跑下一轮；只有达到重试上限后，才把最后一轮 hosted 长链返回前端。"],
+            ],
+          };
+        }
+
+        return {
+          title: "PP 链生成原理",
+          intro: "PP 链不是直接拼出来的，而是通过真实 checkout 与 Stripe 支付流程，把 PayPal 最终 redirect URL 解析出来。provider 提取失败时不会直接当成功，而是自动重试直到上限。",
+          sections: [
+            ["读取输入", "前端先解析 access_token，只提取其中真正的 `access_token`。同时读取 checkout 代理和 provider 代理。provider 代理留空时，后端会使用美国 provider 兜底代理。"],
+            ["创建 ChatGPT checkout", "后端先用 checkout 代理请求 ChatGPT `/backend-api/payments/checkout`。这一步会生成 `cs_id`、processor_entity、账单地区与币种。PP 模式这里沿用原版逻辑，checkout 锁定为 `US/USD`。"],
+            ["使用 provider 代理", "checkout 成功后，Stripe init、confirm 和外部跳转解析使用 provider 阶段代理，ChatGPT approve 继续保持 checkout 代理。"],
+            ["初始化 Stripe payment page", "拿到 `cs_id` 以后，后端用 provider 代理请求 Stripe `POST /v1/payment_pages/{cs_id}/init`，返回 `stripe_hosted_url`、`config_id`、`init_checksum` 等上下文。"],
+            ["生成 hosted 长链", "后端把 `checkout.stripe.com` 返回的 hosted URL 改写成 `pay.openai.com` 长链。即使后面的 PP 提取失败，也能回退用这条 hosted 长链。"],
+            ["生成美国账单资料", "为了匹配 `US/USD` checkout，后端会随机生成美国姓名、邮箱、地址资料，避免 PayPal setup intent 因账单国家不一致被拒。"],
+            ["创建 PayPal payment method", "后端向 Stripe `POST /v1/payment_methods`，`type=paypal`，生成 `pm_xxx`。这一步本质上是先把 PayPal 支付方式挂到当前 checkout。"],
+            ["Confirm checkout", "后端再请求 Stripe `POST /v1/payment_pages/{cs_id}/confirm`。这一步会让 Stripe 开始准备 PayPal 跳转。"],
+            ["可选 ChatGPT approve", "如果 Stripe 返回 `requires_approval`，后端会回到 ChatGPT 侧先做 sentinel ping，再调用 `/backend-api/payments/checkout/approve`，然后继续取 redirect。"],
+            ["轮询 Stripe redirect", "如果 confirm 没直接返回 redirect，后端会轮询 Stripe `GET /v1/payment_pages/{cs_id}`，直到从响应里解析到 `redirect_to_url`。"],
+            ["解析外部跳转", "拿到 Stripe redirect URL 后，后端不会直接停下，而是继续按跳转链一跳一跳跟下去，直到命中 `paypal.com` 域名，或者无法继续跳转。"],
+            ["失败重试与最终结果", "单轮 provider 提取失败时，这一轮只算失败，不会直接当成功。系统会自动重新跑下一轮 checkout + provider 流程；只有达到重试上限后，才把最后一轮 hosted 长链返回前端，并把每轮错误原因实时打印出来。"],
+          ],
+        };
+      }
+
+      function renderPrinciple() {
+        const linkType = $("linkType").value;
+        const content = principleSections(linkType);
+        $("principleTitle").textContent = content.title;
+        $("principleIntro").textContent = content.intro;
+        $("principleContent").innerHTML = "";
+        for (const [title, body] of content.sections) {
+          const block = document.createElement("div");
+          block.className = "principle-step";
+          block.innerHTML = `<strong>${title}</strong><p>${body}</p>`;
+          $("principleContent").appendChild(block);
+        }
+      }
+
+      function openPrinciple() {
+        renderPrinciple();
+        principleModal.classList.add("show");
+        principleModal.setAttribute("aria-hidden", "false");
+      }
+
+      function closePrinciple() {
+        principleModal.classList.remove("show");
+        principleModal.setAttribute("aria-hidden", "true");
+      }
+
+      async function readStream(response) {
+        if (!response.body) throw new Error("浏览器不支持流式响应读取。");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+        let finalResult = null;
+
+        while (true) {
+          const { value, done } = await reader.read();
+          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const event = JSON.parse(line);
+            if (event.type === "result") {
+              finalResult = event.data || {};
+              applyRetryHistory(finalResult.retry_history, finalResult);
+              appendLog({
+                type: "result",
+                step: "done",
+                message: finalResult.ok ? "已收到最终结果。" : "已收到最终失败结果。",
+                ts: event.ts,
+                data: {
+                  attempt: finalResult.attempt_count || 1,
+                  max_attempts: finalResult.max_attempts || 1,
+                  ok: finalResult.ok,
+                  fallback: finalResult.fallback,
+                },
+              });
+            } else if (event.type === "error") {
+              appendLog(event);
+              throw new Error(event.message || "请求失败");
+            } else if (event.type === "cancelled") {
+              appendLog(event);
+              throw new Error(event.message || "任务已终止。");
+            } else {
+              appendLog(event);
+            }
+          }
+
+          if (done) break;
+        }
+
+        if (buffer.trim()) {
+          const event = JSON.parse(buffer);
+          if (event.type === "result") {
+            finalResult = event.data || {};
+            applyRetryHistory(finalResult.retry_history, finalResult);
+            appendLog({
+              type: "result",
+              step: "done",
+              message: finalResult.ok ? "已收到最终结果。" : "已收到最终失败结果。",
+              ts: event.ts,
+              data: {
+                attempt: finalResult.attempt_count || 1,
+                max_attempts: finalResult.max_attempts || 1,
+                ok: finalResult.ok,
+                fallback: finalResult.fallback,
+              },
+            });
+          } else if (event.type === "error") {
+            appendLog(event);
+            throw new Error(event.message || "请求失败");
+          } else if (event.type === "cancelled") {
+            appendLog(event);
+            throw new Error(event.message || "任务已终止。");
+          } else {
+            appendLog(event);
+          }
+        }
+
+        if (!finalResult) throw new Error("服务端未返回最终结果。");
+        return finalResult;
+      }
+
+      async function setTaskPaused(paused) {
+        if (!currentTaskId || !taskRunning) return;
+        const action = paused ? "pause" : "resume";
+        try {
+          const response = await fetch(`/api/long-link/tasks/${encodeURIComponent(currentTaskId)}/${action}`, {
+            method: "POST",
+          });
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || (paused ? "暂停失败" : "继续失败"));
+          }
+          taskPaused = paused;
+          updateTaskControls();
+          appendLog({
+            type: "log",
+            step: "pause",
+            message: paused ? "任务已暂停，当前网络请求完成后会停在下一个检查点。" : "任务已继续。",
+            data: { task_id: currentTaskId },
+          });
+          setStatus(paused ? "已暂停，点击继续可恢复。" : "已继续执行。");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(message, true);
+        }
+      }
+
+      async function terminateTask() {
+        if (!currentTaskId || !taskRunning || taskTerminated) return;
+        taskTerminated = true;
+        taskPaused = false;
+        updateTaskControls();
+        try {
+          const response = await fetch(`/api/long-link/tasks/${encodeURIComponent(currentTaskId)}/terminate`, {
+            method: "POST",
+          });
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || "终止失败");
+          }
+          appendLog({
+            type: "log",
+            step: "terminate",
+            message: "已发送终止指令，任务将在当前请求返回后停止。",
+            data: { task_id: currentTaskId },
+          });
+          setStatus("正在终止任务...");
+        } catch (error) {
+          taskTerminated = false;
+          updateTaskControls();
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(message, true);
+        }
+      }
+
+      async function generate() {
+        const accessToken = readAccessTokenInput();
+        if (!accessToken) {
+          setStatus("Access Token 不能为空。", true);
+          return;
+        }
+
+        currentRunHadEmail = Boolean(currentInputEmail);
+        generateButton.disabled = true;
+        currentTaskId = createTaskId();
+        taskRunning = true;
+        taskPaused = false;
+        taskTerminated = false;
+        updateTaskControls();
+        setLinkEnabled(false);
+        clearLog();
+        resetRunMetrics({ start: true });
+        resetRetryState(clampMaxRetries($("maxRetries").value));
+        $("result").classList.remove("show");
+        setStatus("正在生成，当前步骤和实时日志会同步更新...");
+        currentStepKey = "input";
+        stepState.set("input", { status: "current", message: "已提交生成请求，等待后端返回首个事件。" });
+        renderSteps();
+
+        try {
+          const response = await fetch("/api/long-link/stream", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildRequestPayload(accessToken)),
+          });
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || "请求失败");
+          }
+
+          const data = await readStream(response);
+          renderResult(data);
+          if (shouldTrackEmailStats(data.link_type || $("linkType").value)) {
+            recordEmailStats(currentRunHadEmail, Boolean(data.ok));
+          }
+          setStatus(data.ok ? "生成完成。" : "已达到重试上限，返回最后一轮 hosted 长链。", !data.ok);
+        } catch (error) {
+          currentLongUrl = "";
+          const message = error instanceof Error ? error.message : String(error);
+          if (!retryState) resetRetryState(clampMaxRetries($("maxRetries").value));
+          retryState.final = true;
+          retryState.summary = `任务失败：${message}`;
+          renderRetryState();
+          if (shouldTrackEmailStats($("linkType").value)) {
+            recordEmailStats(currentRunHadEmail, false);
+          }
+          setStatus(message, true);
+        } finally {
+          const metrics = ensureRunMetrics();
+          if (metrics.startedAt && !metrics.finishedAt) {
+            metrics.finishedAt = performance.now();
+            stopElapsedTimer();
+            refreshRunOverview();
+            renderSteps();
+          }
+          taskRunning = false;
+          taskPaused = false;
+          taskTerminated = false;
+          currentTaskId = "";
+          updateTaskControls();
+          generateButton.disabled = false;
+        }
+      }
+
+      async function copyLink() {
+        if (!currentLongUrl) return;
+        await navigator.clipboard.writeText(currentLongUrl);
+        setStatus("已复制。");
+      }
+
+      fillCountries();
+      updateCurrency();
+      loadPaneRatio();
+      bindPaneResize();
+      loadProxyConfig();
+      renderEmailStats();
+      renderPrinciple();
+      resetRunMetrics();
+      renderSteps();
+      updateLockedCountry();
+      resetRetryState(clampMaxRetries($("maxRetries").value));
+      updateTaskControls();
+      updateTokenMeta();
+
+      // 这里用干净定义覆盖前面被错误编码污染的代理检测文案，不改变请求体和按钮行为。
+      async function checkProxyStage(stage) {
+        const button = stage === "provider" ? checkProviderProxyButton : checkCheckoutProxyButton;
+        button.disabled = true;
+        const linkType = $("linkType").value;
+        appendLog({ step: "proxy_check", message: `开始检测 ${stage} 代理。`, data: {} });
+        setStatus(`正在检测 ${stage} 代理...`);
+        setProxyResult(stage, `正在检测 ${stage} 代理...`);
+
+        try {
+          const response = await fetch("/api/check-proxy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              stage,
+              link_type: linkType,
+              proxy: $("checkoutProxy").value.trim(),
+              proxy_input: stage === "provider" ? $("providerProxy").value.trim() : $("checkoutProxy").value.trim(),
+              checkout_proxy: $("checkoutProxy").value.trim(),
+              provider_proxy: $("providerProxy").value.trim(),
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.detail || data.message || "代理检测请求失败。");
+          }
+          for (const item of data.checks || []) {
+            appendLog({
+              type: item.ok ? "result" : "error",
+              step: item.stage || "proxy_check",
+              message: formatProxyCheck(item),
+              data: { proxy: item.proxy_hint || "", source: item.source || "" },
+            });
+          }
+          const resultText = (data.checks || []).map(formatProxyCheck).join("\n") || data.message || `${stage} 代理检测完成。`;
+          setProxyResult(stage, resultText, data.ok ? "ok" : "error");
+          setStatus(data.ok ? `${stage} 代理检测完成。` : data.message || `${stage} 代理检测失败。`, !data.ok);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          appendLog({ type: "error", step: "proxy_check", message, data: {} });
+          setProxyResult(stage, message, "error");
+          setStatus(message, true);
+        } finally {
+          button.disabled = stage === "provider" && $("linkType").value === "hosted";
+        }
+      }
+
+      async function checkRuntimeProxy() {
+        checkRuntimeProxyButton.disabled = true;
+        appendLog({ step: "proxy_check", message: "开始检测本次运行将使用的全部代理。", data: {} });
+        setStatus("正在检测本次运行代理...");
+        setProxyResult("checkout", "正在检测 checkout 阶段代理...");
+        setProxyResult("provider", $("linkType").value === "hosted" ? "hosted 模式不使用 provider 代理。" : "正在检测 provider 阶段代理...");
+
+        try {
+          const response = await fetch("/api/check-proxy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(runtimeProxyPayload()),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.detail || data.message || "运行代理检测请求失败。");
+          }
+
+          const grouped = new Map();
+          for (const item of data.checks || []) {
+            grouped.set(item.stage, formatProxyCheck(item));
+            appendLog({
+              type: item.ok ? "result" : "error",
+              step: item.stage || "proxy_check",
+              message: formatProxyCheck(item),
+              data: {
+                proxy: item.proxy_hint || "",
+                selection_source: item.selection_source || "",
+                source: item.source || "",
+              },
+            });
+          }
+
+          setProxyResult("checkout", grouped.get("checkout") || "未返回 checkout 阶段信息。", data.ok ? "ok" : "error");
+          if ($("linkType").value === "hosted") {
+            setProxyResult("provider", "hosted 模式不使用 provider 代理。");
+          } else {
+            setProxyResult("provider", grouped.get("provider") || "未返回 provider 阶段信息。", data.ok ? "ok" : "error");
+          }
+          setStatus(data.ok ? "本次运行代理检测完成。" : data.message || "本次运行代理检测失败。", !data.ok);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          appendLog({ type: "error", step: "proxy_check", message, data: {} });
+          setProxyResult("checkout", message, "error");
+          if ($("linkType").value !== "hosted") setProxyResult("provider", message, "error");
+          setStatus(message, true);
+        } finally {
+          checkRuntimeProxyButton.disabled = false;
+          checkProviderProxyButton.disabled = $("linkType").value === "hosted";
+        }
+      }
+
+      $("accessToken").addEventListener("input", updateTokenMeta);
+      $("quickProxy").addEventListener("input", applyQuickProxyState);
+      $("linkType").addEventListener("change", updateLockedCountry);
+      $("paymentStrategy").addEventListener("change", applyPaymentStrategyFields);
+      $("billingCountry").addEventListener("change", () => {
+        updateCurrency();
+        syncProviderProxyForBillingCountry();
+      });
+      $("maxRetries").addEventListener("change", () => {
+        const value = clampMaxRetries($("maxRetries").value);
+        $("maxRetries").value = String(value);
+        updateLockedCountry();
+        if (!generateButton.disabled) resetRetryState(value);
+      });
+      $("approveRetries").addEventListener("change", () => {
+        $("approveRetries").value = String(clampApproveRetries($("approveRetries").value));
+      });
+      $("approvePoolSize").addEventListener("change", () => {
+        $("approvePoolSize").value = String(clampApprovePoolSize($("approvePoolSize").value));
+      });
+      $("approvePoolMaxAttempts").addEventListener("change", () => {
+        $("approvePoolMaxAttempts").value = String(clampApprovePoolMaxAttempts($("approvePoolMaxAttempts").value));
+      });
+      $("saveProxyConfig").addEventListener("click", saveProxyConfig);
+      $("clearProxyConfig").addEventListener("click", clearProxyConfig);
+      $("clearLog").addEventListener("click", clearLog);
+      $("showPrinciple").addEventListener("click", openPrinciple);
+      $("showPrincipleInline").addEventListener("click", openPrinciple);
+      $("closePrinciple").addEventListener("click", closePrinciple);
+      fetchBrowserSessionButton.addEventListener("click", fetchBrowserSession);
+      openSessionPageButton.addEventListener("click", openSessionPage);
+      copySessionUrlButton.addEventListener("click", copySessionUrl);
+      principleModal.addEventListener("click", (event) => {
+        if (event.target === principleModal) closePrinciple();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && principleModal.classList.contains("show")) closePrinciple();
+      });
+      checkCheckoutProxyButton.addEventListener("click", () => checkProxyStage("checkout"));
+      checkProviderProxyButton.addEventListener("click", () => checkProxyStage("provider"));
+      checkRuntimeProxyButton.addEventListener("click", checkRuntimeProxy);
+      generateButton.addEventListener("click", generate);
+      pauseTaskButton.addEventListener("click", () => setTaskPaused(true));
+      resumeTaskButton.addEventListener("click", () => setTaskPaused(false));
+      terminateTaskButton.addEventListener("click", terminateTask);
+      copyButton.addEventListener("click", copyLink);
+    </script>
+  </body>
+</html>

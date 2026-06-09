@@ -3,7 +3,7 @@ pid: 31352
 cwd: "D:\nanno\Gpt_Plus\转长链\opll"
 command: "cmd /c \"D:\\nanno\\Gpt_Plus\\start_proxy.bat\" "
 started_at: 2026-06-08T07:19:54.526Z
-running_for_ms: 22969998 
+running_for_ms: 49064999 
 ---
 正在连接 SSH 隧道...
 本地代理地址：http://127.0.0.1:3010

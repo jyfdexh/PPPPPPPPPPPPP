@@ -348,6 +348,7 @@ escape_env_value() {
 write_runtime_env() {
   log "写入运行环境变量"
   cat >"${APP_ENV_FILE}" <<EOF
+OPENAI_PAY_UI_PROFILE="public"
 OPENAI_PAY_DEFAULT_PROXY="$(escape_env_value "${DEFAULT_PROXY}")"
 OPENAI_PAY_PROVIDER_PROXY="$(escape_env_value "${PROVIDER_PROXY}")"
 OPENAI_PAY_GOPAY_PROVIDER_PROXY="$(escape_env_value "${GOPAY_PROXY}")"

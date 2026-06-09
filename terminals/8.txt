@@ -3,7 +3,7 @@ pid: 42464
 cwd: "D:\nanno\Gpt_Plus\转长链\opll"
 command: "Set-Location -LiteralPath 'D:\\nanno\\Gpt_Plus\\转长链\\opll'; .\\.venv\\Scripts\\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8788 --no-access-log"
 started_at: 2026-06-08T09:06:41.017Z
-running_for_ms: 16565007 
+running_for_ms: 42660000 
 ---
 INFO:     Started server process [11388]
 INFO:     Waiting for application startup.

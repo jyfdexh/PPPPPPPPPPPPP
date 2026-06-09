@@ -3,7 +3,7 @@ pid: 15264
 cwd: "D:\nanno\Gpt_Plus\转长链\opll"
 command: "Stop-Process -Id 41736 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; Set-Location -LiteralPath 'D:\\nanno\\Gpt_Plus\\转长链\\opll'; Start-Process -NoNewWindow -FilePath '.\\.venv\\Scripts\\python.exe' -ArgumentList '-m','uvicorn','app:app','--host','127.0.0.1','--port','8788','--no-access-log'; Start-Sleep -Seconds 3; .\\.venv\\Scripts\\python.exe _run_case.py \"测试session\\session1.txt\" jp_us - s1_reconfirm 2>&1"
 started_at: 2026-06-08T13:11:06.881Z
-running_for_ms: 1480003  
+running_for_ms: 27574999 
 ---
 INFO:     Started server process [20460]
 INFO:     Waiting for application startup.

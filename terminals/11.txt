@@ -3,7 +3,7 @@ pid: 17824
 cwd: "D:\nanno\Gpt_Plus\转长链\opll"
 command: "Set-Location -LiteralPath 'D:\\nanno\\Gpt_Plus\\转长链\\opll'; .\\.venv\\Scripts\\python.exe _run_case.py \"测试session\\session2.txt\" jp_us - \"session2_jp_us_v3\""
 started_at: 2026-06-08T09:11:00.819Z
-running_for_ms: 15405006 
+running_for_ms: 41500002 
 ---
 === session2_jp_us_v3 ===
 {"billing": "US", "payment_strategy": "jp_us", "checkout_proxy": "http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010", "provider_proxy": "http://bj2m1188418-region-US:nanno2@127.0.0.1:3010"}

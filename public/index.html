@@ -3333,6 +3333,7 @@
       let taskRunning = false;
       let taskPaused = false;
       let taskTerminated = false;
+      let activeStreamAbortController = null;
       let currentStepKey = "";
       let retryState = null;
       let paneDragState = null;
@@ -4171,6 +4172,7 @@
         return {
           startedAt: 0,
           finishedAt: 0,
+          terminated: false,
           currentRawStep: "",
           stepTiming: new Map(),
           attempt: 0,
@@ -4209,6 +4211,16 @@
       function stopElapsedTimer() {
         if (elapsedTimer) clearInterval(elapsedTimer);
         elapsedTimer = null;
+      }
+
+      function finalizeTaskElapsed({ terminated = false } = {}) {
+        const metrics = ensureRunMetrics();
+        if (!metrics.startedAt || metrics.finishedAt) return;
+        metrics.finishedAt = performance.now();
+        if (terminated) metrics.terminated = true;
+        stopElapsedTimer();
+        refreshRunOverview();
+        renderSteps();
       }
 
       function resetRunMetrics({ start = false } = {}) {
@@ -4291,7 +4303,14 @@
         const end = metrics.finishedAt || now;
         const elapsed = hasStarted ? end - metrics.startedAt : 0;
         updateMetricText("totalElapsedMetric", formatDuration(elapsed), false);
-        $("totalElapsedSub").textContent = hasStarted ? (metrics.finishedAt ? "流程已结束" : "流程运行中") : "等待开始";
+        const elapsedSub = !hasStarted
+          ? "等待开始"
+          : metrics.terminated
+            ? "已终止"
+            : metrics.finishedAt
+              ? "流程已结束"
+              : "流程运行中";
+        $("totalElapsedSub").textContent = elapsedSub;
         const attemptText = metrics.maxAttempts ? `${metrics.attempt || 0}/${metrics.maxAttempts}` : `${metrics.attempt || 0}/0`;
         updateMetricText("attemptMetric", attemptText, false);
         $("attemptSub").textContent = metrics.attempt ? `第 ${metrics.attempt} 轮执行中` : "自动重试状态";
@@ -5730,7 +5749,11 @@
         if (!currentTaskId || !taskRunning || taskTerminated) return;
         taskTerminated = true;
         taskPaused = false;
+        finalizeTaskElapsed({ terminated: true });
         updateTaskControls();
+        if (activeStreamAbortController) {
+          activeStreamAbortController.abort();
+        }
         try {
           const response = await fetch(`/api/long-link/tasks/${encodeURIComponent(currentTaskId)}/terminate`, {
             method: "POST",
@@ -5742,12 +5765,17 @@
           appendLog({
             type: "log",
             step: "terminate",
-            message: "已发送终止指令，任务将在当前请求返回后停止。",
+            message: "已发送终止指令，后台会在当前网络请求结束后尽快退出。",
             data: { task_id: currentTaskId },
           });
-          setStatus("正在终止任务...");
+          setStatus("任务已终止，总耗时已冻结。");
         } catch (error) {
           taskTerminated = false;
+          const metrics = ensureRunMetrics();
+          metrics.terminated = false;
+          metrics.finishedAt = 0;
+          startElapsedTimer();
+          refreshRunOverview();
           updateTaskControls();
           const message = error instanceof Error ? error.message : String(error);
           setStatus(message, true);
@@ -5780,6 +5808,7 @@
         renderSteps();
 
         const abortController = new AbortController();
+        activeStreamAbortController = abortController;
         const timeoutId = window.setTimeout(() => abortController.abort(), LINK_TIMEOUT_MS);
         try {
           const response = await fetch("/api/long-link/stream", {
@@ -5813,12 +5842,9 @@
           setStatus(message, true);
         } finally {
           window.clearTimeout(timeoutId);
-          const metrics = ensureRunMetrics();
-          if (metrics.startedAt && !metrics.finishedAt) {
-            metrics.finishedAt = performance.now();
-            stopElapsedTimer();
-            refreshRunOverview();
-            renderSteps();
+          activeStreamAbortController = null;
+          if (!taskTerminated) {
+            finalizeTaskElapsed();
           }
           taskRunning = false;
           taskPaused = false;

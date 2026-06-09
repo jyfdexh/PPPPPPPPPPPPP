@@ -606,7 +606,45 @@ def normalize_approve_pool_max_attempts(value: Any) -> int:
     return max(1, min(parsed, 5000))
 
 
-APPROVE_ESCALATION_TIERS: tuple[int, ...] = (1, 2, 4, 8, 16, 30)
+APPROVE_ESCALATION_TIERS_LOCAL: tuple[int, ...] = (1, 2, 4, 8, 16, 30)
+APPROVE_ESCALATION_TIERS_SERVER: tuple[int, ...] = (1, 2, 4)
+# 兼容旧引用；实际运行请用 approve_escalation_tiers()
+APPROVE_ESCALATION_TIERS: tuple[int, ...] = APPROVE_ESCALATION_TIERS_LOCAL
+
+
+def is_local_ui_profile() -> bool:
+    return UI_PROFILE == "local"
+
+
+def approve_escalation_tiers() -> tuple[int, ...]:
+    if is_local_ui_profile():
+        return APPROVE_ESCALATION_TIERS_LOCAL
+    return APPROVE_ESCALATION_TIERS_SERVER
+
+
+def approve_escalation_tier_label(tiers: tuple[int, ...] | None = None) -> str:
+    active = tiers or approve_escalation_tiers()
+    return "→".join(str(item) for item in active)
+
+
+def approve_escalation_exhausted_detail(
+    last_error: str,
+    last_result: str,
+    *,
+    tiers: tuple[int, ...] | None = None,
+) -> str:
+    active = tiers or approve_escalation_tiers()
+    profile_hint = (
+        f"服务器模式仅尝试 {len(active)} 轮（最高 {active[-1]} 路并发），"
+        if not is_local_ui_profile()
+        else ""
+    )
+    return (
+        f"chatgpt approve 阶梯并发耗尽仍失败: {last_error}; "
+        f"approve_result={last_result!r}; "
+        f"{profile_hint}"
+        f"tiers={approve_escalation_tier_label(active)}"
+    )
 
 
 def approve_escalation_max_attempts(pool_size: int, req: LongLinkRequest | None = None) -> int:
@@ -2122,6 +2160,18 @@ def release_task_controller(task_id: str) -> None:
         TASK_CONTROLLERS.pop(safe_task_id, None)
 
 
+def raise_if_task_cancelled(req: LongLinkRequest | None) -> None:
+    if req is None:
+        return
+    safe_task_id = normalize_task_id(getattr(req, "task_id", "") or "")
+    if not safe_task_id:
+        return
+    with TASK_CONTROLLERS_LOCK:
+        controller = TASK_CONTROLLERS.get(safe_task_id)
+    if controller is not None:
+        controller.raise_if_cancelled()
+
+
 def normalize_proxy_probe_payload(data: dict[str, Any]) -> dict[str, str]:
     if str(data.get("status") or "").lower() == "fail":
         raise RuntimeError(str(data.get("message") or "IP probe failed"))
@@ -2876,7 +2926,9 @@ def chatgpt_approve_once_with_parallel_probe(
     else:
         progress("chatgpt_approve", "正在等待 ChatGPT approve 响应…", {"cs_id": cs_id})
 
+    raise_if_task_cancelled(poll_req)
     result, error_text = chatgpt_approve_once(chatgpt, cs_id, checkout)
+    raise_if_task_cancelled(poll_req)
 
     redirect_url = ""
     if probe_thread is not None and result == "approved":
@@ -3065,6 +3117,7 @@ def chatgpt_approve_concurrent_pool(
             return
         cycle_index = 0
         while not stop_event.is_set():
+            raise_if_task_cancelled(poll_req)
             label, proxy = poll_proxy_cycle[cycle_index % len(poll_proxy_cycle)]
             cycle_index += 1
             active_clone = clone_http_session(stripe)
@@ -3091,6 +3144,11 @@ def chatgpt_approve_concurrent_pool(
     def approve_worker_loop() -> None:
         worker = clone_http_session(chatgpt)
         while not stop_event.is_set():
+            try:
+                raise_if_task_cancelled(poll_req)
+            except TaskCancelled:
+                stop_event.set()
+                raise
             with state_lock:
                 if state["attempts"] >= max_attempts:
                     return
@@ -3201,6 +3259,11 @@ def chatgpt_approve_concurrent_pool(
         if stripe is not None and fetch_ba:
             futures.extend([executor.submit(redirect_poller_loop), executor.submit(redirect_poller_loop)])
         while time.time() < deadline and not stop_event.is_set():
+            try:
+                raise_if_task_cancelled(poll_req)
+            except TaskCancelled:
+                stop_event.set()
+                raise
             if link_deadline is not None:
                 ensure_link_generation_deadline(link_deadline)
             with state_lock:
@@ -3238,6 +3301,9 @@ def chatgpt_approve_concurrent_pool(
             for future in futures:
                 try:
                     future.result(timeout=0.5)
+                except TaskCancelled:
+                    stop_event.set()
+                    raise
                 except Exception as exc:
                     with state_lock:
                         state["last_error"] = str(exc)
@@ -3245,7 +3311,7 @@ def chatgpt_approve_concurrent_pool(
         if pm_early_exit and not fetch_ba:
             executor.shutdown(wait=False, cancel_futures=True)
         else:
-            executor.shutdown(wait=True)
+            executor.shutdown(wait=False, cancel_futures=True)
 
     if pm_early_exit and not fetch_ba:
         progress(
@@ -3425,6 +3491,7 @@ def chatgpt_approve_concurrent_pool(
             pass
     if approve_result == "approved":
         return redirect_flow_result(redirect_url or "", approve_result, intermediate=intermediate_pm)
+    raise_if_task_cancelled(poll_req)
     raise HTTPException(
         status_code=502,
         detail=f"chatgpt approve 并发池耗尽: attempts={attempts_used}, last_error={last_error}; approve_result={approve_result!r}",
@@ -3453,7 +3520,7 @@ def chatgpt_approve_escalating(
     link_deadline: float | None = None,
     progress: ProgressLogger = noop_progress,
 ) -> tuple[str, str, str]:
-    tiers = APPROVE_ESCALATION_TIERS
+    tiers = approve_escalation_tiers()
     last_error = ""
     last_result = ""
     try:
@@ -3472,6 +3539,7 @@ def chatgpt_approve_escalating(
         pass
 
     for tier_index, pool_size in enumerate(tiers, start=1):
+        raise_if_task_cancelled(req)
         if link_deadline is not None:
             ensure_link_generation_deadline(link_deadline)
         tier_label = "串行 1 次" if pool_size == 1 else f"{pool_size} 路并发 · 本档 1 次"
@@ -3620,10 +3688,7 @@ def chatgpt_approve_escalating(
 
     raise HTTPException(
         status_code=502,
-        detail=(
-            f"chatgpt approve 阶梯并发耗尽仍失败: {last_error}; "
-            f"approve_result={last_result!r}; tiers={','.join(str(item) for item in tiers)}"
-        ),
+        detail=approve_escalation_exhausted_detail(last_error, last_result, tiers=tiers),
     )
 
 
@@ -3826,14 +3891,21 @@ def redirect_url_after_confirm(
             set_proxy_url(chatgpt, approve_proxy)
         else:
             chatgpt.proxies = {}
+        escalation_tiers = approve_escalation_tiers()
         progress(
             "chatgpt_approve",
-            "requires_approval：ChatGPT approve 使用独立 approve 出口代理，按 1→2→4→8→16→30 路阶梯并发。",
+            (
+                "requires_approval：ChatGPT approve 使用独立 approve 出口代理，按 "
+                f"{approve_escalation_tier_label(escalation_tiers)} 路阶梯并发"
+                + ("（服务器最多 3 轮）。" if not is_local_ui_profile() else "。")
+            ),
             {
                 "approve_result": "pending",
-                "approve_escalation_total": len(APPROVE_ESCALATION_TIERS),
-                "approve_pool_size": APPROVE_ESCALATION_TIERS[0],
+                "approve_escalation_total": len(escalation_tiers),
+                "approve_pool_size": escalation_tiers[0],
                 "approve_pool_max_attempts": 1,
+                "approve_escalation_profile": UI_PROFILE,
+                "approve_escalation_max_pool": escalation_tiers[-1],
                 "approve_proxy": safe_proxy_hint(approve_proxy),
                 "checkout_proxy": safe_proxy_hint(checkout_proxy),
                 "provider_proxy": safe_proxy_hint(provider_proxy),

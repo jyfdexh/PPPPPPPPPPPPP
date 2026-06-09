@@ -19,19 +19,22 @@ def main() -> int:
     strategy = sys.argv[2] if len(sys.argv) > 2 else "jp_us"
     session = open(session_path, encoding="utf-8").read().strip()
     profiles = {
-        "jp_us": ("US", "JP", "US", "jp_us"),
-        "de_eur": ("DE", "DE", "DE", "de_eur"),
+        "jp_us": ("US", "JP", "US", "JP", "jp_us"),
+        "jp_de": ("DE", "JP", "DE", "JP", "jp_de"),
+        "de_eur": ("DE", "JP", "DE", "JP", "jp_de"),
     }
-    billing, checkout_r, provider_r, payment_strategy = profiles.get(strategy, profiles["jp_us"])
+    billing, checkout_r, provider_r, approve_r, payment_strategy = profiles.get(strategy, profiles["jp_us"])
     payload = {
         "accessToken": session,
         "link_type": "paypal",
         "billing_country": billing,
         "payment_locale": "de" if billing == "DE" else "en",
         "paymentStrategy": payment_strategy,
+        "approveProxyRegion": approve_r,
         "proxy": proxy_region(CHECKOUT, checkout_r),
         "checkoutProxy": proxy_region(CHECKOUT, checkout_r),
         "providerProxy": proxy_region(CHECKOUT, provider_r),
+        "approveProxy": proxy_region(CHECKOUT, approve_r),
         "maxRetries": 1,
         "approveRetries": 10,
         "approvePoolSize": 15,

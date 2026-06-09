@@ -144,7 +144,7 @@ class ProgressStreamTests(unittest.TestCase):
         chatgpt = SimpleNamespace(post=fake_post)
 
         with patch.object(app.time, "sleep", return_value=None):
-            redirect_url, approve_result = app.chatgpt_approve_with_retry(
+            redirect_url, approve_result, pm_redirect_url = app.chatgpt_approve_with_retry(
                 chatgpt,
                 "cs_live_same",
                 checkout,
@@ -155,6 +155,7 @@ class ProgressStreamTests(unittest.TestCase):
         approve_calls = [url for url in called_urls if url.endswith("/checkout/approve")]
         self.assertEqual(len(approve_calls), 1)
         self.assertEqual(redirect_url, "https://pm-redirects.stripe.com/test")
+        self.assertEqual(pm_redirect_url, "https://pm-redirects.stripe.com/test")
         self.assertEqual(approve_result, "blocked")
 
     def test_redirect_uses_request_approve_retries(self) -> None:
@@ -170,16 +171,15 @@ class ProgressStreamTests(unittest.TestCase):
         }
         confirm_payload = {"submission_attempt": {"state": "requires_approval"}}
 
-        def fake_approve(_chatgpt, _cs_id, _checkout, max_attempts, progress, after_attempt=None, **kwargs):
-            captured["max_attempts"] = max_attempts
-            captured["pool_size"] = kwargs.get("pool_size")
-            return "", "approved"
+        def fake_escalating(_chatgpt, _cs_id, _checkout, **kwargs):
+            captured["called"] = 1
+            return "", "approved", ""
 
         with (
-            patch.object(app, "chatgpt_approve_with_retry", side_effect=fake_approve),
+            patch.object(app, "chatgpt_approve_escalating", side_effect=fake_escalating),
             patch.object(app, "stripe_payment_page_redirect_url", return_value="https://pm-redirects.stripe.com/test"),
         ):
-            url, approve_result = app.redirect_url_after_confirm(
+            url, approve_result, pm_redirect_url = app.redirect_url_after_confirm(
                 SimpleNamespace(),
                 SimpleNamespace(),
                 confirm_payload,
@@ -191,8 +191,129 @@ class ProgressStreamTests(unittest.TestCase):
 
         self.assertEqual(url, "https://pm-redirects.stripe.com/test")
         self.assertEqual(approve_result, "approved")
-        self.assertGreaterEqual(captured["max_attempts"], 7)
-        self.assertEqual(captured["pool_size"], 30)
+        self.assertEqual(captured.get("called"), 1)
+
+    def test_chatgpt_approve_escalation_serial_approved_skips_reapprove_pool(self) -> None:
+        checkout = {
+            "billing_country": "DE",
+            "processor_entity": "openai_ie",
+        }
+        pool_calls: list[int] = []
+
+        def fake_once(_chatgpt, _cs_id, _checkout):
+            return "approved", ""
+
+        def fake_pool(_chatgpt, _cs_id, _checkout, *, pool_size, **_kwargs):
+            pool_calls.append(pool_size)
+            return "", "approved", ""
+
+        with (
+            patch.object(app, "chatgpt_approve_once", side_effect=fake_once),
+            patch.object(app, "chatgpt_approve_concurrent_pool", side_effect=fake_pool),
+            patch.object(app, "probe_redirect_after_approve", return_value="https://pm-redirects.stripe.com/test"),
+        ):
+            redirect_url, approve_result, pm_redirect_url = app.chatgpt_approve_escalating(
+                SimpleNamespace(post=lambda *_args, **_kwargs: FakeApproveResponse("approved")),
+                "cs_live_escalate",
+                checkout,
+                stripe=SimpleNamespace(),
+                req=self.make_request(),
+            )
+
+        self.assertEqual(redirect_url, "https://pm-redirects.stripe.com/test")
+        self.assertEqual(approve_result, "approved")
+        self.assertEqual(pool_calls, [])
+
+    def test_effective_approve_result_keeps_approved(self) -> None:
+        self.assertEqual(app.effective_approve_result("approved", "exception"), "approved")
+        self.assertEqual(app.effective_approve_result("blocked", "approved"), "approved")
+
+    def test_chatgpt_approve_once_with_parallel_probe_runs_both(self) -> None:
+        calls: list[str] = []
+
+        def fake_approve(_chatgpt, _cs_id, _checkout):
+            calls.append("approve")
+            return "approved", ""
+
+        def fake_probe(*_args, **_kwargs):
+            calls.append("probe")
+            return "https://pm-redirects.stripe.com/test"
+
+        with (
+            patch.object(app, "chatgpt_approve_once", side_effect=fake_approve),
+            patch.object(app, "probe_redirect_after_approve", side_effect=fake_probe),
+        ):
+            result, error_text, redirect_url = app.chatgpt_approve_once_with_parallel_probe(
+                SimpleNamespace(),
+                "cs_parallel",
+                {"billing_country": "DE", "processor_entity": "openai_ie"},
+                stripe=SimpleNamespace(),
+                stripe_pk="pk_test",
+                req=self.make_request(),
+            )
+
+        self.assertEqual(result, "approved")
+        self.assertEqual(error_text, "")
+        self.assertEqual(redirect_url, "https://pm-redirects.stripe.com/test")
+        self.assertIn("approve", calls)
+        self.assertIn("probe", calls)
+
+    def test_approve_escalation_max_attempts_is_one_per_tier(self) -> None:
+        self.assertEqual(app.approve_escalation_max_attempts(2), 1)
+        self.assertEqual(app.approve_escalation_max_attempts(30), 1)
+        self.assertEqual(app.approve_escalation_wave_attempts(2), 2)
+        self.assertEqual(app.approve_escalation_wave_attempts(8), 8)
+
+    def test_approve_escalation_tiers_server_profile_caps_at_four(self) -> None:
+        with patch.object(app, "UI_PROFILE", "public"):
+            self.assertEqual(app.approve_escalation_tiers(), (1, 2, 4))
+            self.assertEqual(app.approve_escalation_tier_label(), "1→2→4")
+
+    def test_approve_escalation_tiers_local_profile_keeps_thirty(self) -> None:
+        with patch.object(app, "UI_PROFILE", "local"):
+            self.assertEqual(app.approve_escalation_tiers(), (1, 2, 4, 8, 16, 30))
+            self.assertEqual(app.approve_escalation_tier_label(), "1→2→4→8→16→30")
+
+    def test_approve_escalation_exhausted_detail_mentions_server_limit(self) -> None:
+        with patch.object(app, "UI_PROFILE", "public"):
+            detail = app.approve_escalation_exhausted_detail("blocked", "blocked")
+        self.assertIn("仅尝试 3 轮", detail)
+        self.assertIn("最高 4 路", detail)
+
+    def test_chatgpt_approve_escalation_serial_blocked_then_upgrades(self) -> None:
+        checkout = {
+            "billing_country": "US",
+            "processor_entity": "openai_llc",
+        }
+        progress_events: list[str] = []
+        pool_sizes: list[int] = []
+        pool_max_attempts: list[int] = []
+
+        def fake_once(_chatgpt, _cs_id, _checkout):
+            return "blocked", ""
+
+        def fake_pool(_chatgpt, _cs_id, _checkout, *, pool_size, max_attempts, **_kwargs):
+            pool_sizes.append(pool_size)
+            pool_max_attempts.append(max_attempts)
+            return "https://pm-redirects.stripe.com/test", "approved", "https://pm-redirects.stripe.com/test"
+
+        with (
+            patch.object(app, "chatgpt_approve_once", side_effect=fake_once),
+            patch.object(app, "chatgpt_approve_concurrent_pool", side_effect=fake_pool),
+        ):
+            redirect_url, approve_result, pm_redirect_url = app.chatgpt_approve_escalating(
+                SimpleNamespace(post=lambda *_args, **_kwargs: FakeApproveResponse("approved")),
+                "cs_live_escalate",
+                checkout,
+                stripe=SimpleNamespace(),
+                progress=lambda _step, message, _data=None: progress_events.append(message),
+            )
+
+        self.assertEqual(redirect_url, "https://pm-redirects.stripe.com/test")
+        self.assertEqual(approve_result, "approved")
+        self.assertEqual(pool_sizes[0], 2)
+        self.assertEqual(pool_max_attempts[0], 2)
+        self.assertTrue(any("升级到 2 路并发" in message for message in progress_events))
 
     def test_stripe_context_reuses_init_stripe_js_id(self) -> None:
         req = self.make_request()
@@ -241,6 +362,17 @@ class ProgressStreamTests(unittest.TestCase):
         self.assertIn("/v1/setup_intents/seti_123", seen_calls[0][0])
         self.assertEqual(seen_calls[0][1]["params"]["client_secret"], "seti_123_secret_456")
 
+    def test_extract_redirect_to_url_reads_payment_page_top_level_url(self) -> None:
+        paypal_url = "https://www.paypal.com/agreements/approve?ba_token=BA-TOP-LEVEL"
+        redirect_url = app.extract_redirect_to_url(
+            {
+                "url": paypal_url,
+                "status": "open",
+                "payment_status": "unpaid",
+            }
+        )
+        self.assertEqual(redirect_url, paypal_url)
+
     def test_resolve_external_redirect_extracts_paypal_url_from_html(self) -> None:
         paypal_url = "https://www.paypal.com/agreements/approve?ba_token=BA-TEST123"
 
@@ -260,6 +392,171 @@ class ProgressStreamTests(unittest.TestCase):
         )
 
         self.assertEqual(resolved, paypal_url)
+
+    def test_is_paypal_success_url_accepts_pm_redirect_when_fetch_ba_disabled(self) -> None:
+        req = self.make_request()
+        req.fetch_ba_token = False
+        pm_url = "https://pm-redirects.stripe.com/authorize/acct_test/sa_nonce_test"
+        self.assertTrue(app.is_paypal_success_url(pm_url, req))
+        self.assertFalse(app.is_paypal_success_url("https://pay.openai.com/c/pay/cs_test", req))
+
+    def test_direct_mode_disables_stage_proxies(self) -> None:
+        req = self.make_request()
+        req.all_no_proxy = True
+        self.assertEqual(app.checkout_stage_proxy(req), "")
+        self.assertEqual(app.provider_stage_proxy(req), "")
+        self.assertEqual(app.approve_stage_proxy(req), "")
+        applied = app.apply_payment_strategy(req)
+        self.assertEqual(applied.checkout_proxy, "")
+        self.assertEqual(applied.provider_proxy, "")
+        self.assertEqual(applied.approve_proxy, "")
+
+    def test_pm_redirect_stop_url_returns_pm_when_fetch_ba_disabled(self) -> None:
+        req = self.make_request()
+        req.fetch_ba_token = False
+        pm_url = "https://pm-redirects.stripe.com/authorize/acct_test/sa_nonce_test"
+        self.assertEqual(app.pm_redirect_stop_url(req, pm_url), pm_url)
+        req.fetch_ba_token = True
+        self.assertEqual(app.pm_redirect_stop_url(req, pm_url), "")
+
+    def test_is_paypal_success_url_requires_ba_when_fetch_ba_enabled(self) -> None:
+        req = self.make_request()
+        req.fetch_ba_token = True
+        pm_url = "https://pm-redirects.stripe.com/authorize/acct_test/sa_nonce_test"
+        ba_url = "https://www.paypal.com/agreements/approve?ba_token=BA-TEST"
+        self.assertFalse(app.is_paypal_success_url(pm_url, req))
+        self.assertTrue(app.is_paypal_success_url(ba_url, req))
+
+    def test_stripe_payment_page_redirect_url_single_probe_when_fetch_ba_disabled(self) -> None:
+        req = self.make_request()
+        req.fetch_ba_token = False
+        pm_url = "https://pm-redirects.stripe.com/authorize/acct_test/sa_nonce_test"
+        call_count = {"n": 0}
+
+        def fake_get(url: str, **_kwargs):
+            call_count["n"] += 1
+            return FakeHttpResponse(
+                status_code=200,
+                json_data={
+                    "url": pm_url,
+                    "status": "open",
+                },
+                url=url,
+            )
+
+        stripe = SimpleNamespace(get=fake_get)
+        resolved = app.stripe_payment_page_redirect_url(
+            stripe,
+            "cs_live_pm",
+            "pk_test",
+            req,
+            timeout_seconds=30,
+        )
+        self.assertEqual(resolved, pm_url)
+        self.assertEqual(call_count["n"], 1)
+
+    def test_poll_payment_page_provider_url_fast_skips_loop_when_fetch_ba_disabled(self) -> None:
+        req = self.make_request()
+        req.fetch_ba_token = False
+        pm_url = "https://pm-redirects.stripe.com/authorize/acct_test/sa_nonce_test"
+        sleep_calls: list[float] = []
+
+        def fake_get(url: str, **_kwargs):
+            return FakeHttpResponse(
+                status_code=200,
+                json_data={"url": pm_url, "status": "open"},
+                url=url,
+            )
+
+        stripe = SimpleNamespace(get=fake_get)
+        with patch.object(app.time, "sleep", side_effect=lambda seconds: sleep_calls.append(seconds)):
+            resolved = app.poll_payment_page_provider_url_fast(
+                stripe,
+                "cs_live_pm",
+                "pk_test",
+                req,
+                timeout_seconds=10,
+            )
+        self.assertEqual(resolved, pm_url)
+        self.assertEqual(sleep_calls, [])
+
+    def test_resolve_pm_redirect_follow_uses_browser_like_redirects(self) -> None:
+        paypal_url = "https://www.paypal.com/agreements/approve?ba_token=BA-FOLLOW"
+        pm_url = "https://pm-redirects.stripe.com/authorize/acct_test/sa_nonce_test?useWebAuthSession=true"
+
+        def fake_get(url: str, allow_redirects: bool = False, **_kwargs):
+            if allow_redirects and "pm-redirects.stripe.com" in url:
+                return FakeHttpResponse(status_code=200, text="", url=paypal_url)
+            return FakeHttpResponse(status_code=302, headers={"Location": paypal_url}, url=url)
+
+        stripe = SimpleNamespace(get=fake_get)
+
+        resolved = app.resolve_pm_redirect_follow(
+            stripe,
+            pm_url,
+            preferred_hosts=("paypal.com",),
+        )
+
+        self.assertEqual(resolved, paypal_url)
+
+    def test_create_provider_link_stops_at_pm_without_resolve_when_fetch_ba_disabled(self) -> None:
+        req = self.make_request()
+        req.fetch_ba_token = False
+        pm_url = "https://pm-redirects.stripe.com/authorize/acct_test/sa_nonce_test?useWebAuthSession=true"
+        checkout = {
+            "cs_id": "cs_live_pm",
+            "billing_country": "DE",
+            "processor_entity": "openai_ie",
+            "currency": "eur",
+        }
+        init_payload = {
+            "_stripe_js_id": "js_fixed_123",
+            "_elements_locale": "de",
+            "config_id": "cfg_test_123",
+            "init_checksum": "checksum_test_123",
+            "currency": "eur",
+        }
+        progress_events: list[tuple[str, str, dict | None]] = []
+
+        with (
+            patch.object(app, "stripe_create_payment_method", return_value="pm_test_123"),
+            patch.object(app, "stripe_confirm", return_value={"submission_attempt": {"state": "requires_approval"}}),
+            patch.object(
+                app,
+                "redirect_url_after_confirm",
+                return_value=(pm_url, "blocked", pm_url),
+            ),
+            patch.object(app, "resolve_external_redirect_with_proxy_pool") as resolve_mock,
+            patch.object(app, "stripe_payment_page_redirect_url") as repoll_mock,
+        ):
+            result = app.create_provider_link(
+                SimpleNamespace(),
+                checkout,
+                init_payload,
+                "https://checkout.stripe.com/c/pay/cs_live_pm",
+                req,
+                stripe_session=SimpleNamespace(),
+                progress=lambda step, message, data=None: progress_events.append((step, message, data)),
+            )
+
+        self.assertEqual(result["long_url"], pm_url)
+        self.assertEqual(result["pm_redirect_url"], pm_url)
+        resolve_mock.assert_not_called()
+        repoll_mock.assert_not_called()
+        self.assertTrue(any(data and data.get("stop_polling") for _step, _message, data in progress_events))
+
+    def test_post_approve_redirect_recovery_skips_when_fetch_ba_disabled(self) -> None:
+        req = self.make_request()
+        req.fetch_ba_token = False
+        with patch.object(app, "probe_stripe_redirect_sources") as probe_mock:
+            recovered = app.post_approve_redirect_recovery(
+                SimpleNamespace(),
+                "cs_live_pm",
+                "pk_test",
+                req,
+            )
+        self.assertEqual(recovered, "")
+        probe_mock.assert_not_called()
 
     def test_create_provider_link_recovers_from_hosted_page_after_redirect_timeout(self) -> None:
         req = self.make_request()
@@ -363,6 +660,18 @@ class ProgressStreamTests(unittest.TestCase):
         finally:
             app.release_task_controller(task_id)
 
+    def test_raise_if_task_cancelled_uses_registered_controller(self) -> None:
+        task_id = "task_test_raise_cancel"
+        controller = app.get_or_create_task_controller(task_id)
+        req = self.make_request()
+        req.task_id = task_id
+        try:
+            controller.cancel()
+            with self.assertRaises(app.TaskCancelled):
+                app.raise_if_task_cancelled(req)
+        finally:
+            app.release_task_controller(task_id)
+
     def test_generate_core_reports_progress_without_real_network(self) -> None:
         req = self.make_request()
         messages: list[str] = []
@@ -462,7 +771,7 @@ class ProgressStreamTests(unittest.TestCase):
             )
         )
 
-    def test_generate_core_uses_checkout_proxy_for_stripe_init_then_switches_same_session_to_provider(self) -> None:
+    def test_generate_core_uses_provider_proxy_for_stripe_init_then_reuses_same_session(self) -> None:
         req = app.LongLinkRequest(
             accessToken='{"access_token":"tok_abcdefghijklmnopqrstuvwxyz"}',
             link_type="paypal",
@@ -472,7 +781,7 @@ class ProgressStreamTests(unittest.TestCase):
         stripe_session = requests.Session()
         seen: dict[str, object] = {}
 
-        def fake_stripe_init(_cs_id, _req, proxy_override="", stripe_session=None):
+        def fake_stripe_init(_cs_id, _req, proxy_override="", stripe_session=None, checkout=None):
             seen["init_proxy"] = proxy_override
             seen["init_session_same"] = stripe_session is stripe_session_ref
             return {"stripe_hosted_url": "https://checkout.stripe.com/c/pay/cs_test_123"}
@@ -509,13 +818,13 @@ class ProgressStreamTests(unittest.TestCase):
             result = app.generate_long_link_core(req)
 
         self.assertTrue(result.ok)
-        self.assertEqual(seen["init_proxy"], "http://checkout.proxy:9000")
+        self.assertEqual(seen["init_proxy"], "http://provider.proxy:9100")
         self.assertTrue(seen["init_session_same"])
         self.assertEqual(seen["provider_proxy"], "http://provider.proxy:9100")
         self.assertTrue(seen["provider_session_same"])
         self.assertEqual(seen["provider_session_http_proxy"], "http://provider.proxy:9100")
 
-    def test_generate_core_retries_when_provider_falls_back(self) -> None:
+    def test_generate_core_paypal_single_attempt_fails_without_retry(self) -> None:
         req = self.make_request()
         progress_events: list[tuple[str, str, dict | None]] = []
         attempts = {"count": 0}
@@ -525,14 +834,7 @@ class ProgressStreamTests(unittest.TestCase):
 
         def fake_provider_link(*_args, **_kwargs) -> dict[str, str]:
             attempts["count"] += 1
-            if attempts["count"] < 3:
-                raise app.HTTPException(status_code=502, detail=f"provider 第 {attempts['count']} 轮失败")
-            return {
-                "payment_method_id": "pm_test_123",
-                "stripe_redirect_url": "https://hooks.stripe.com/test",
-                "provider_redirect_url": "https://www.paypal.com/agreements/approve?ba_token=BA-FINAL",
-                "long_url": "https://www.paypal.com/agreements/approve?ba_token=BA-FINAL",
-            }
+            raise app.HTTPException(status_code=502, detail=f"provider 第 {attempts['count']} 轮失败")
 
         with (
             patch.object(app, "build_chatgpt_session", return_value=SimpleNamespace()),
@@ -555,23 +857,22 @@ class ProgressStreamTests(unittest.TestCase):
         ):
             result = app.generate_long_link_core(req, progress=progress)
 
-        self.assertTrue(result.ok)
-        self.assertFalse(result.fallback)
-        self.assertEqual(result.attempt_count, 3)
-        self.assertEqual(result.max_attempts, 5)
-        self.assertEqual(len(result.retry_history), 3)
-        self.assertEqual(result.retry_history[0].attempt, 1)
+        self.assertFalse(result.ok)
+        self.assertTrue(result.fallback)
+        self.assertEqual(result.attempt_count, 1)
+        self.assertEqual(result.max_attempts, 1)
+        self.assertEqual(attempts["count"], 1)
+        self.assertEqual(len(result.retry_history), 1)
         self.assertFalse(result.retry_history[0].ok)
-        self.assertEqual(result.retry_history[-1].attempt, 3)
-        self.assertTrue(result.retry_history[-1].ok)
-        self.assertTrue(
+        self.assertTrue(result.retry_history[0].fallback)
+        self.assertFalse(
             any(
                 step == "retry" and (data or {}).get("phase") == "attempt_failed" and (data or {}).get("will_retry") is True
                 for step, _message, data in progress_events
             )
         )
 
-    def test_generate_core_returns_last_hosted_after_retry_limit(self) -> None:
+    def test_generate_core_paypal_returns_hosted_on_single_failure(self) -> None:
         req = app.LongLinkRequest(
             accessToken='{"access_token":"tok_abcdefghijklmnopqrstuvwxyz"}',
             link_type="paypal",
@@ -601,12 +902,24 @@ class ProgressStreamTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertTrue(result.fallback)
-        self.assertEqual(result.attempt_count, 3)
-        self.assertEqual(result.max_attempts, 3)
+        self.assertEqual(result.attempt_count, 1)
+        self.assertEqual(result.max_attempts, 1)
         self.assertEqual(result.long_url, "https://pay.openai.com/c/pay/cs_test_456")
-        self.assertEqual(len(result.retry_history), 3)
+        self.assertEqual(len(result.retry_history), 1)
         self.assertTrue(all(not item.ok for item in result.retry_history))
         self.assertTrue(all(item.fallback for item in result.retry_history))
+
+    def test_generate_core_raises_after_link_generation_timeout(self) -> None:
+        req = self.make_request()
+        start = 1000.0
+        expired = start + app.LINK_GENERATION_TIMEOUT_SECONDS + 1
+
+        with patch.object(app.time, "time", side_effect=[start, expired]):
+            with self.assertRaises(app.HTTPException) as ctx:
+                app.generate_long_link_core(req)
+
+        self.assertEqual(ctx.exception.status_code, 504)
+        self.assertIn("60s", str(ctx.exception.detail))
 
     def test_normalize_max_retries_bounds(self) -> None:
         self.assertEqual(app.normalize_max_retries(0), 1)
@@ -841,10 +1154,26 @@ class ProxyCheckTests(unittest.TestCase):
         self.assertEqual(app.provider_stage_proxy(req), "http://provider.proxy:9100")
 
     def test_paypal_billing_uses_us_address(self) -> None:
+        from billing_pools import US_BILLING_STREETS
+
         billing = app.billing_for_link_type("paypal")
+        valid_states = {street[2] for street in US_BILLING_STREETS}
 
         self.assertEqual(billing["country"], "US")
-        self.assertIn(billing["state"], {"CA", "TX", "NY", "GA"})
+        self.assertIn(billing["state"], valid_states)
+
+    def test_paypal_billing_de_uses_ascii_safe_address(self) -> None:
+        from billing_pools import DE_BILLING_NAMES, DE_BILLING_STREETS
+
+        billing = app.billing_for_link_type("paypal", country="DE")
+        valid_states = {street[2] for street in DE_BILLING_STREETS}
+        valid_names = {f"{first} {last}" for first, last in DE_BILLING_NAMES}
+
+        self.assertEqual(billing["country"], "DE")
+        self.assertIn(billing["state"], valid_states)
+        self.assertIn(billing["name"], valid_names)
+        self.assertTrue(billing["line1"].isascii())
+        self.assertTrue(billing["name"].isascii())
 
     def test_extract_stripe_terminal_error_reads_payment_method_from_last_setup_error(self) -> None:
         detail = app.extract_stripe_terminal_error(

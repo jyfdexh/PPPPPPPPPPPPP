@@ -2683,14 +2683,14 @@
               </div>
               <div class="checkbox-field proxy-mode-options">
                 <label class="checkbox-label" for="allJpProxy">
-                  <input id="allJpProxy" type="checkbox" checked />
+                  <input id="allJpProxy" type="checkbox" />
                   <span>全程 JP 代理</span>
                 </label>
                 <label class="checkbox-label" for="allNoProxy">
-                  <input id="allNoProxy" type="checkbox" />
+                  <input id="allNoProxy" type="checkbox" checked />
                   <span>全程无代理</span>
                 </label>
-                <span id="proxyModeHint" class="proxy-hint">默认全程 JP。日本服务器可勾选全程无代理，三段均直连。</span>
+                <span id="proxyModeHint" class="proxy-hint">默认全程无代理，checkout / provider / approve 均直连。需要代理时可取消勾选并填写快捷代理。</span>
               </div>
             </div>
 
@@ -2791,12 +2791,8 @@
                   <input id="approveRetries" type="number" min="1" max="30" step="1" value="10" />
                 </div>
                 <div>
-                  <label for="approvePoolSize">approve 最大并发档</label>
-                  <input id="approvePoolSize" type="number" min="1" max="100" step="1" value="30" />
-                </div>
-                <div>
-                  <label for="approvePoolMaxAttempts">approve 池最大次数</label>
-                  <input id="approvePoolMaxAttempts" type="number" min="1" max="5000" step="1" value="30" />
+                  <label for="approveAttemptCount">approve 尝试次数</label>
+                  <input id="approveAttemptCount" type="number" min="1" max="50" step="1" value="6" />
                 </div>
                 <div>
                   <label for="stripeKey">Stripe Publishable Key</label>
@@ -2966,7 +2962,7 @@
           <div class="guide-panel">
             <div>
               <label style="margin-bottom: 4px">PP 链原理概览</label>
-              <p id="guideSummary">checkout 固定日本；provider 默认随 DE 账单走德国出口；approve 默认日本。可勾选全程 JP 让三段统一走日本代理。</p>
+              <p id="guideSummary">默认全程无代理直连。取消无代理后可配置 checkout / provider / approve 代理；未勾无代理时 provider 随 DE 账单走德国出口。</p>
             </div>
             <button id="showPrincipleInline" class="secondary" type="button">展开详细原理</button>
           </div>
@@ -3300,8 +3296,7 @@
       const QUICK_PROXY_REGION_PATTERN = /region-([a-z]{2})/i;
       const DEFAULT_MAX_RETRIES = 1;
       const DEFAULT_APPROVE_RETRIES = 10;
-      const DEFAULT_APPROVE_POOL_SIZE = 30;
-      const DEFAULT_APPROVE_POOL_MAX_ATTEMPTS = 30;
+      const DEFAULT_APPROVE_ATTEMPT_COUNT = 6;
       function paypalPaymentStrategy() {
         return $("billingCountry").value === "DE" ? "jp_de" : "jp_us";
       }
@@ -3334,6 +3329,7 @@
       let taskPaused = false;
       let taskTerminated = false;
       let activeStreamAbortController = null;
+      let activeStreamReader = null;
       let currentStepKey = "";
       let retryState = null;
       let paneDragState = null;
@@ -3432,16 +3428,10 @@
         return Math.min(20, Math.max(1, parsed));
       }
 
-      function clampApprovePoolSize(value) {
-        const parsed = Number.parseInt(String(value || DEFAULT_APPROVE_POOL_SIZE), 10);
-        if (!Number.isFinite(parsed)) return DEFAULT_APPROVE_POOL_SIZE;
-        return Math.max(1, Math.min(parsed, 100));
-      }
-
-      function clampApprovePoolMaxAttempts(value) {
-        const parsed = Number.parseInt(String(value || DEFAULT_APPROVE_POOL_MAX_ATTEMPTS), 10);
-        if (!Number.isFinite(parsed)) return DEFAULT_APPROVE_POOL_MAX_ATTEMPTS;
-        return Math.max(50, Math.min(parsed, 5000));
+      function clampApproveAttemptCount(value) {
+        const parsed = Number.parseInt(String(value || DEFAULT_APPROVE_ATTEMPT_COUNT), 10);
+        if (!Number.isFinite(parsed)) return DEFAULT_APPROVE_ATTEMPT_COUNT;
+        return Math.max(1, Math.min(parsed, 50));
       }
 
       function proxyControlsExposed() {
@@ -3722,8 +3712,7 @@
           provider_proxy: defaultProviderProxy(),
           max_retries: DEFAULT_MAX_RETRIES,
           approve_retries: DEFAULT_APPROVE_RETRIES,
-          approve_pool_size: 30,
-          approve_pool_max_attempts: DEFAULT_APPROVE_POOL_MAX_ATTEMPTS,
+          approve_attempt_count: DEFAULT_APPROVE_ATTEMPT_COUNT,
           approve_proxy_region: "JP",
           all_jp_proxy: Boolean(proxyDefaults.all_jp_proxy),
           all_no_proxy: proxyDefaults.all_no_proxy !== false,
@@ -3771,8 +3760,10 @@
         $("providerProxy").value = String(merged.provider_proxy || "");
         $("maxRetries").value = String(clampMaxRetries(merged.max_retries));
         $("approveRetries").value = String(clampApproveRetries(merged.approve_retries));
-        $("approvePoolSize").value = String(clampApprovePoolSize(merged.approve_pool_size));
-        $("approvePoolMaxAttempts").value = String(clampApprovePoolMaxAttempts(merged.approve_pool_max_attempts));
+        const attemptCount = merged.approve_attempt_count
+          ?? merged.approve_pool_max_attempts
+          ?? DEFAULT_APPROVE_ATTEMPT_COUNT;
+        $("approveAttemptCount").value = String(clampApproveAttemptCount(attemptCount));
         $("approveProxyRegion").value = merged.approve_proxy_region || "JP";
         $("allNoProxy").checked = Boolean(merged.all_no_proxy);
         $("allJpProxy").checked = merged.all_no_proxy ? false : merged.all_jp_proxy !== false;
@@ -4180,7 +4171,7 @@
           approveAttempts: 0,
           approveRendered: 0,
           approvePoolSize: 1,
-          approvePoolMaxAttempts: clampApprovePoolMaxAttempts($("approvePoolMaxAttempts")?.value || DEFAULT_APPROVE_POOL_MAX_ATTEMPTS),
+          approveAttemptCount: clampApproveAttemptCount($("approveAttemptCount")?.value || DEFAULT_APPROVE_ATTEMPT_COUNT),
           approveEscalationTier: 0,
           approveEscalationTotal: 6,
           approveResult: "pending",
@@ -4616,13 +4607,17 @@
         if (Number.isFinite(maxAttempts) && maxAttempts > 0) metrics.maxAttempts = maxAttempts;
 
         const poolSize = Number.parseInt(String(data.approve_pool_size || ""), 10);
-        const poolMax = Number.parseInt(String(data.approve_pool_max_attempts || ""), 10);
         const escalationTier = Number.parseInt(String(data.approve_escalation_tier || ""), 10);
-        const escalationTotal = Number.parseInt(String(data.approve_escalation_total || ""), 10);
+        const escalationTotal = Number.parseInt(
+          String(data.approve_escalation_total || data.approve_max_attempts || ""),
+          10,
+        );
         if (Number.isFinite(poolSize) && poolSize > 0) {
           metrics.approvePoolSize = poolSize;
         }
-        if (Number.isFinite(poolMax) && poolMax > 0) metrics.approvePoolMaxAttempts = poolMax;
+        if (Number.isFinite(escalationTotal) && escalationTotal > 0) {
+          metrics.approveAttemptCount = escalationTotal;
+        }
         if (Number.isFinite(escalationTier) && escalationTier > 0) {
           if (metrics.approveEscalationTier && metrics.approveEscalationTier !== escalationTier) {
             metrics.approveAttempts = 0;
@@ -4632,7 +4627,7 @@
         if (Number.isFinite(escalationTotal) && escalationTotal > 0) metrics.approveEscalationTotal = escalationTotal;
 
         const approveAttempt = Number.parseInt(String(data.approve_attempt || ""), 10);
-        const tierOnce = Number.isFinite(escalationTier) && escalationTier > 0 && poolMax === 1;
+        const tierOnce = Number.isFinite(escalationTier) && escalationTier > 0;
         if (tierOnce) {
           if (Number.isFinite(approveAttempt) && approveAttempt > 0) {
             metrics.approveAttempts = 1;
@@ -5138,7 +5133,7 @@
         $("providerProxyHint").textContent = providerProxyHintText();
         setProxyResult("provider", defaultProxyResultText("provider"));
         $("guideSummary").textContent =
-          `默认全程 JP 代理；日本服务器可勾选全程无代理直连。未勾无代理时 provider 随 DE 账单走德国。approve 按 1→2→4→8→16→30 路阶梯升级；单次超过 60 秒失败退出。`;
+          `默认全程无代理直连。取消无代理后可启用 JP/地区代理；未勾无代理时 provider 随 DE 账单走德国。approve 按 1→2→4→8→16→30 路阶梯升级；单次超过 60 秒失败退出。`;
         generateButton.textContent = "提取 PP 链";
         applyQuickProxyState();
         updateCurrency();
@@ -5184,12 +5179,10 @@
       function saveProxyConfig() {
         const maxRetries = clampMaxRetries($("maxRetries").value);
         const approveRetries = clampApproveRetries($("approveRetries").value);
-        const approvePoolSize = clampApprovePoolSize($("approvePoolSize").value);
-        const approvePoolMaxAttempts = clampApprovePoolMaxAttempts($("approvePoolMaxAttempts").value);
+        const approveAttemptCount = clampApproveAttemptCount($("approveAttemptCount").value);
         $("maxRetries").value = String(maxRetries);
         $("approveRetries").value = String(approveRetries);
-        $("approvePoolSize").value = String(approvePoolSize);
-        $("approvePoolMaxAttempts").value = String(approvePoolMaxAttempts);
+        $("approveAttemptCount").value = String(approveAttemptCount);
         localStorage.setItem(
           "openai_pay_long_link_proxy_config",
           JSON.stringify({
@@ -5198,8 +5191,7 @@
             provider_proxy: $("providerProxy").value.trim(),
             max_retries: maxRetries,
             approve_retries: approveRetries,
-            approve_pool_size: approvePoolSize,
-            approve_pool_max_attempts: approvePoolMaxAttempts,
+            approve_attempt_count: approveAttemptCount,
             approve_proxy_region: $("approveProxyRegion").value,
             all_jp_proxy: isAllJpProxy(),
             all_no_proxy: isAllNoProxy(),
@@ -5398,8 +5390,7 @@
           user_agent: $("userAgent").value.trim(),
           maxRetries: clampMaxRetries($("maxRetries").value),
           approveRetries: clampApproveRetries($("approveRetries").value),
-          approvePoolSize: clampApprovePoolSize($("approvePoolSize").value),
-          approvePoolMaxAttempts: clampApprovePoolMaxAttempts($("approvePoolMaxAttempts").value),
+          approveAttemptCount: clampApproveAttemptCount($("approveAttemptCount").value),
           paymentStrategy: paypalPaymentStrategy(),
           fetchBaToken: fetchBaTokenEnabled(),
           allNoProxy: isAllNoProxy(),
@@ -5409,7 +5400,10 @@
 
       function approveAttemptLabel(data) {
         const attempt = Number.parseInt(String(data.approve_attempt || ""), 10);
-        const maxAttempts = Number.parseInt(String(data.approve_max_attempts || data.approve_pool_max_attempts || ""), 10);
+        const maxAttempts = Number.parseInt(
+          String(data.approve_max_attempts || data.approve_escalation_total || ""),
+          10,
+        );
         if (!Number.isFinite(attempt) || !Number.isFinite(maxAttempts) || attempt <= 0 || maxAttempts <= 0) {
           return "";
         }
@@ -5645,11 +5639,17 @@
       async function readStream(response) {
         if (!response.body) throw new Error("浏览器不支持流式响应读取。");
         const reader = response.body.getReader();
+        activeStreamReader = reader;
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
         let finalResult = null;
 
+        try {
         while (true) {
+          if (taskTerminated) {
+            await reader.cancel();
+            throw new Error("任务已终止。");
+          }
           const { value, done } = await reader.read();
           buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
           const lines = buffer.split("\n");
@@ -5717,13 +5717,17 @@
 
         if (!finalResult) throw new Error("服务端未返回最终结果。");
         return finalResult;
+        } finally {
+          if (activeStreamReader === reader) activeStreamReader = null;
+        }
       }
 
       async function setTaskPaused(paused) {
         if (!currentTaskId || !taskRunning) return;
+        const taskId = currentTaskId;
         const action = paused ? "pause" : "resume";
         try {
-          const response = await fetch(`/api/long-link/tasks/${encodeURIComponent(currentTaskId)}/${action}`, {
+          const response = await fetch(`/api/long-link/tasks/${encodeURIComponent(taskId)}/${action}`, {
             method: "POST",
           });
           if (!response.ok) {
@@ -5736,7 +5740,7 @@
             type: "log",
             step: "pause",
             message: paused ? "任务已暂停，当前网络请求完成后会停在下一个检查点。" : "任务已继续。",
-            data: { task_id: currentTaskId },
+            data: { task_id: taskId },
           });
           setStatus(paused ? "已暂停，点击继续可恢复。" : "已继续执行。");
         } catch (error) {
@@ -5747,15 +5751,13 @@
 
       async function terminateTask() {
         if (!currentTaskId || !taskRunning || taskTerminated) return;
+        const taskId = currentTaskId;
         taskTerminated = true;
         taskPaused = false;
         finalizeTaskElapsed({ terminated: true });
         updateTaskControls();
-        if (activeStreamAbortController) {
-          activeStreamAbortController.abort();
-        }
         try {
-          const response = await fetch(`/api/long-link/tasks/${encodeURIComponent(currentTaskId)}/terminate`, {
+          const response = await fetch(`/api/long-link/tasks/${encodeURIComponent(taskId)}/terminate`, {
             method: "POST",
           });
           if (!response.ok) {
@@ -5765,8 +5767,8 @@
           appendLog({
             type: "log",
             step: "terminate",
-            message: "已发送终止指令，后台会在当前网络请求结束后尽快退出。",
-            data: { task_id: currentTaskId },
+            message: "已发送终止指令，所有进行中的 approve/轮询/重试将立即停止。",
+            data: { task_id: taskId },
           });
           setStatus("任务已终止，总耗时已冻结。");
         } catch (error) {
@@ -5779,6 +5781,17 @@
           updateTaskControls();
           const message = error instanceof Error ? error.message : String(error);
           setStatus(message, true);
+        } finally {
+          if (activeStreamReader) {
+            try {
+              await activeStreamReader.cancel();
+            } catch {
+              // ignore reader cancel errors
+            }
+          }
+          if (activeStreamAbortController) {
+            activeStreamAbortController.abort();
+          }
         }
       }
 
@@ -5915,11 +5928,8 @@
       $("approveRetries").addEventListener("change", () => {
         $("approveRetries").value = String(clampApproveRetries($("approveRetries").value));
       });
-      $("approvePoolSize").addEventListener("change", () => {
-        $("approvePoolSize").value = String(clampApprovePoolSize($("approvePoolSize").value));
-      });
-      $("approvePoolMaxAttempts").addEventListener("change", () => {
-        $("approvePoolMaxAttempts").value = String(clampApprovePoolMaxAttempts($("approvePoolMaxAttempts").value));
+      $("approveAttemptCount").addEventListener("change", () => {
+        $("approveAttemptCount").value = String(clampApproveAttemptCount($("approveAttemptCount").value));
       });
       $("fetchBaToken").addEventListener("change", () => {
         if (currentResultData) {

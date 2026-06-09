@@ -26,11 +26,11 @@ class UiConfigTests(unittest.TestCase):
 
         self.assertEqual(config["profile"], "local")
         self.assertTrue(config["expose_proxy_controls"])
-        self.assertTrue(config["proxy_defaults"]["quick_proxy"])
-        self.assertIn("region-JP", config["proxy_defaults"]["checkout_proxy"])
-        self.assertIn("region-JP", config["proxy_defaults"]["provider_proxy"])
-        self.assertTrue(config["proxy_defaults"]["all_jp_proxy"])
-        self.assertFalse(config["proxy_defaults"]["all_no_proxy"])
+        self.assertEqual(config["proxy_defaults"]["quick_proxy"], "")
+        self.assertEqual(config["proxy_defaults"]["checkout_proxy"], "")
+        self.assertEqual(config["proxy_defaults"]["provider_proxy"], "")
+        self.assertFalse(config["proxy_defaults"]["all_jp_proxy"])
+        self.assertTrue(config["proxy_defaults"]["all_no_proxy"])
         self.assertTrue(any("region-US" in item for item in config["proxy_presets"]))
 
 

@@ -51,8 +51,7 @@ class PublicPayPalInputTests(unittest.TestCase):
         self.assertEqual(inner.payment_strategy, "jp_de")
         self.assertTrue(inner.all_no_proxy)
         self.assertFalse(inner.fetch_ba_token)
-        self.assertEqual(inner.approve_pool_size, 30)
-        self.assertEqual(inner.approve_pool_max_attempts, 30)
+        self.assertEqual(inner.approve_attempt_count, 6)
 
     def test_public_request_allows_us_profile_override(self) -> None:
         req = app.PublicPayPalLinkRequest(

@@ -276,9 +276,86 @@ class ProgressStreamTests(unittest.TestCase):
 
     def test_approve_escalation_exhausted_detail_mentions_server_limit(self) -> None:
         with patch.object(app, "UI_PROFILE", "public"):
-            detail = app.approve_escalation_exhausted_detail("blocked", "blocked")
-        self.assertIn("仅尝试 3 轮", detail)
+            detail = app.approve_escalation_exhausted_detail("blocked", "blocked", total_attempts=3)
+        self.assertIn("3 次尝试", detail)
         self.assertIn("最高 4 路", detail)
+
+    def test_normalize_approve_attempt_count_defaults_to_six(self) -> None:
+        self.assertEqual(app.normalize_approve_attempt_count(None), 6)
+        self.assertEqual(app.normalize_approve_attempt_count(8), 8)
+
+    def test_approve_pool_size_for_round_extended_local_uses_thirty(self) -> None:
+        with patch.object(app, "UI_PROFILE", "local"):
+            self.assertEqual(app.approve_pool_size_for_round(7), 30)
+            self.assertEqual(app.approve_pool_size_for_round(8), 30)
+
+    def test_approve_pool_size_for_round_extended_server_caps_at_four(self) -> None:
+        with patch.object(app, "UI_PROFILE", "public"):
+            self.assertEqual(app.approve_pool_size_for_round(4), 4)
+            self.assertEqual(app.approve_pool_size_for_round(7), 4)
+
+    def test_chatgpt_approve_escalating_final_round_failure_raises_immediately(self) -> None:
+        checkout = {
+            "billing_country": "US",
+            "processor_entity": "openai_llc",
+        }
+        req = self.make_request()
+        req.approve_attempt_count = 1
+
+        with patch.object(
+            app,
+            "chatgpt_approve_once_with_parallel_probe",
+            return_value=("blocked", "still blocked", ""),
+        ):
+            with self.assertRaises(app.HTTPException) as exc:
+                app.chatgpt_approve_escalating(
+                    SimpleNamespace(post=lambda *_args, **_kwargs: FakeApproveResponse("approved")),
+                    "cs_live_final",
+                    checkout,
+                    stripe=SimpleNamespace(),
+                    req=req,
+                )
+        self.assertIn("最后一轮尝试失败", str(exc.exception.detail))
+
+    def test_chatgpt_approve_concurrent_pool_final_round_skips_recovery(self) -> None:
+        checkout = {
+            "billing_country": "US",
+            "processor_entity": "openai_llc",
+        }
+        req = self.make_request()
+
+        def fake_approve_once(_chatgpt, _cs_id, _checkout, req=None):
+            return "blocked", ""
+
+        with (
+            patch.object(app.time, "sleep", return_value=None),
+            patch.object(app, "chatgpt_approve_once", side_effect=fake_approve_once),
+            patch.object(app, "post_approve_redirect_recovery") as recovery_mock,
+        ):
+            with self.assertRaises(app.HTTPException) as exc:
+                app.chatgpt_approve_concurrent_pool(
+                    SimpleNamespace(post=lambda *_args, **_kwargs: FakeApproveResponse("ok")),
+                    "cs_live_pool_final",
+                    checkout,
+                    pool_size=2,
+                    max_attempts=2,
+                    req=req,
+                    is_final_round=True,
+                )
+        recovery_mock.assert_not_called()
+        self.assertIn("最后一轮尝试失败", str(exc.exception.detail))
+
+    def test_terminate_task_signals_registered_stop_events(self) -> None:
+        task_id = "task_test_stop_signal"
+        stop_event = threading.Event()
+        app.register_task_stop_event(task_id, stop_event)
+        try:
+            app.get_or_create_task_controller(task_id)
+            app.terminate_task(task_id)
+            self.assertTrue(stop_event.is_set())
+        finally:
+            app.unregister_task_stop_event(task_id, stop_event)
+            app.release_task_controller(task_id)
 
     def test_chatgpt_approve_escalation_serial_blocked_then_upgrades(self) -> None:
         checkout = {

@@ -2610,9 +2610,15 @@
           grid-template-columns: 1fr;
         }
       }
+
+      body.public-ui .quick-proxy-card,
+      body.public-ui .proxy-grid,
+      body.public-ui label[for="allJpProxy"] {
+        display: none !important;
+      }
     </style>
   </head>
-  <body>
+  <body class="public-ui">
     <main>
       <header>
         <div class="header-copy">
@@ -2711,15 +2717,12 @@
               <input
                 id="quickProxy"
                 list="proxyPresetList"
-                placeholder="例如 http://bj2m1188418-region-US:nanno2@127.0.0.1:3010"
+                placeholder="例如 http://user-region-US:pass@127.0.0.1:3010"
               />
               <span id="quickProxyHint" class="proxy-hint">默认按 region-XX 中的国家简称自动替换。</span>
             </div>
 
-            <datalist id="proxyPresetList">
-              <option value="http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010"></option>
-              <option value="http://bj2m1188418-region-US:nanno2@127.0.0.1:3010"></option>
-            </datalist>
+            <datalist id="proxyPresetList"></datalist>
 
             <div class="proxy-grid">
               <div id="checkoutProxyCard" class="proxy-card">
@@ -3255,9 +3258,22 @@
 
       const $ = (id) => document.getElementById(id);
       const CHATGPT_SESSION_URL = "https://chatgpt.com/api/auth/session";
-      const DEFAULT_QUICK_PROXY = "http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010";
-      const DEFAULT_CHECKOUT_PROXY = "http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010";
-      const DEFAULT_PROVIDER_PROXY = "http://bj2m1188418-region-DE:nanno2@127.0.0.1:3010";
+      const DEFAULT_QUICK_PROXY = "";
+      const DEFAULT_CHECKOUT_PROXY = "";
+      const DEFAULT_PROVIDER_PROXY = "";
+      const DEFAULT_UI_CONFIG = {
+        profile: "public",
+        expose_proxy_controls: false,
+        proxy_presets: [],
+        proxy_defaults: {
+          quick_proxy: "",
+          checkout_proxy: "",
+          provider_proxy: "",
+          all_jp_proxy: false,
+          all_no_proxy: true,
+        },
+      };
+      let runtimeUiConfig = { ...DEFAULT_UI_CONFIG, proxy_defaults: { ...DEFAULT_UI_CONFIG.proxy_defaults } };
       const PAYPAL_COUNTRIES = [
         ["DE", "德国 DE", "EUR"],
         ["US", "美国 US", "USD"],
@@ -3410,6 +3426,81 @@
         return Math.max(50, Math.min(parsed, 5000));
       }
 
+      function proxyControlsExposed() {
+        return Boolean(runtimeUiConfig?.expose_proxy_controls);
+      }
+
+      function runtimeProxyDefaults() {
+        return runtimeUiConfig?.proxy_defaults || DEFAULT_UI_CONFIG.proxy_defaults;
+      }
+
+      function defaultQuickProxy() {
+        return String(runtimeProxyDefaults().quick_proxy || DEFAULT_QUICK_PROXY || "");
+      }
+
+      function defaultCheckoutProxy() {
+        return String(runtimeProxyDefaults().checkout_proxy || DEFAULT_CHECKOUT_PROXY || "");
+      }
+
+      function defaultProviderProxy() {
+        return String(runtimeProxyDefaults().provider_proxy || DEFAULT_PROVIDER_PROXY || "");
+      }
+
+      function renderProxyPresetList() {
+        const presetList = $("proxyPresetList");
+        if (!presetList) return;
+        presetList.textContent = "";
+        const presets = Array.isArray(runtimeUiConfig.proxy_presets) ? runtimeUiConfig.proxy_presets : [];
+        for (const preset of presets) {
+          const value = String(preset || "").trim();
+          if (!value) continue;
+          const option = document.createElement("option");
+          option.value = value;
+          presetList.appendChild(option);
+        }
+      }
+
+      function applyRuntimeUiMode() {
+        const isLocalUi = proxyControlsExposed();
+        document.body.classList.toggle("local-ui", isLocalUi);
+        document.body.classList.toggle("public-ui", !isLocalUi);
+        renderProxyPresetList();
+        const allNoProxy = $("allNoProxy");
+        const allJpProxy = $("allJpProxy");
+        if (!isLocalUi) {
+          allNoProxy.checked = true;
+          allJpProxy.checked = false;
+          allNoProxy.disabled = true;
+          allJpProxy.disabled = true;
+          $("quickProxy").value = "";
+          $("checkoutProxy").value = "";
+          $("providerProxy").value = "";
+        } else {
+          allNoProxy.disabled = false;
+          allJpProxy.disabled = false;
+        }
+      }
+
+      async function loadRuntimeUiConfig() {
+        try {
+          const response = await fetch("/api/ui-config", { cache: "no-store" });
+          if (response.ok) {
+            const payload = await response.json();
+            runtimeUiConfig = {
+              ...DEFAULT_UI_CONFIG,
+              ...(payload || {}),
+              proxy_defaults: {
+                ...DEFAULT_UI_CONFIG.proxy_defaults,
+                ...((payload || {}).proxy_defaults || {}),
+              },
+            };
+          }
+        } catch {
+          runtimeUiConfig = { ...DEFAULT_UI_CONFIG, proxy_defaults: { ...DEFAULT_UI_CONFIG.proxy_defaults } };
+        }
+        applyRuntimeUiMode();
+      }
+
       function isAllJpProxy() {
         return Boolean($("allJpProxy")?.checked) && !isAllNoProxy();
       }
@@ -3437,7 +3528,7 @@
           $("providerProxy").value = "";
         } else {
           const quickProxy = $("quickProxy").value.trim();
-          const base = quickProxy || DEFAULT_QUICK_PROXY;
+          const base = quickProxy || defaultQuickProxy();
           $("checkoutProxy").value = proxyForRegion(base, "JP");
           $("providerProxy").value = proxyForRegion(base, providerRegionForBilling(billing));
         }
@@ -3454,6 +3545,18 @@
       }
 
       function updateProxyModeUi() {
+        const exposeProxyControls = proxyControlsExposed();
+        const allNoProxy = $("allNoProxy");
+        const allJpProxy = $("allJpProxy");
+        if (!exposeProxyControls) {
+          allNoProxy.checked = true;
+          allJpProxy.checked = false;
+          allNoProxy.disabled = true;
+          allJpProxy.disabled = true;
+        } else {
+          allNoProxy.disabled = false;
+          allJpProxy.disabled = false;
+        }
         const allJp = isAllJpProxy();
         const allDirect = isAllNoProxy();
         const approveSelect = $("approveProxyRegion");
@@ -3474,7 +3577,9 @@
         const hint = $("proxyModeHint");
         if (hint) {
           hint.textContent = allDirect
-            ? "已启用全程无代理：适合日本服务器部署，checkout / provider / approve 均不走代理。"
+            ? (exposeProxyControls
+              ? "已启用全程无代理：适合日本服务器部署，checkout / provider / approve 均不走代理。"
+              : "服务器公开模式：默认全程无代理，代理输入已隐藏。")
             : allJp
               ? "已启用全程 JP 代理：checkout / provider / approve 三段均走日本出口。"
               : "未勾选时 provider 随地区走 US/DE，approve 走上方选择。";
@@ -3592,17 +3697,18 @@
       }
 
       function defaultProxyConfig() {
+        const proxyDefaults = runtimeProxyDefaults();
         return {
-          quick_proxy: DEFAULT_QUICK_PROXY,
-          checkout_proxy: DEFAULT_CHECKOUT_PROXY,
-          provider_proxy: DEFAULT_PROVIDER_PROXY,
+          quick_proxy: defaultQuickProxy(),
+          checkout_proxy: defaultCheckoutProxy(),
+          provider_proxy: defaultProviderProxy(),
           max_retries: DEFAULT_MAX_RETRIES,
           approve_retries: DEFAULT_APPROVE_RETRIES,
           approve_pool_size: 30,
           approve_pool_max_attempts: DEFAULT_APPROVE_POOL_MAX_ATTEMPTS,
           approve_proxy_region: "JP",
-          all_jp_proxy: true,
-          all_no_proxy: false,
+          all_jp_proxy: Boolean(proxyDefaults.all_jp_proxy),
+          all_no_proxy: proxyDefaults.all_no_proxy !== false,
           fetch_ba_token: false,
           billing_country: DEFAULT_BILLING_COUNTRY,
         };
@@ -3643,8 +3749,8 @@
       function applyProxyConfig(config) {
         const merged = { ...defaultProxyConfig(), ...(config || {}) };
         $("quickProxy").value = String(merged.quick_proxy || "");
-        $("checkoutProxy").value = String(merged.checkout_proxy || DEFAULT_CHECKOUT_PROXY);
-        $("providerProxy").value = String(merged.provider_proxy || DEFAULT_PROVIDER_PROXY);
+        $("checkoutProxy").value = String(merged.checkout_proxy || "");
+        $("providerProxy").value = String(merged.provider_proxy || "");
         $("maxRetries").value = String(clampMaxRetries(merged.max_retries));
         $("approveRetries").value = String(clampApproveRetries(merged.approve_retries));
         $("approvePoolSize").value = String(clampApprovePoolSize(merged.approve_pool_size));
@@ -3652,6 +3758,13 @@
         $("approveProxyRegion").value = merged.approve_proxy_region || "JP";
         $("allNoProxy").checked = Boolean(merged.all_no_proxy);
         $("allJpProxy").checked = merged.all_no_proxy ? false : merged.all_jp_proxy !== false;
+        if (!proxyControlsExposed()) {
+          $("allNoProxy").checked = true;
+          $("allJpProxy").checked = false;
+          $("quickProxy").value = "";
+          $("checkoutProxy").value = "";
+          $("providerProxy").value = "";
+        }
         $("fetchBaToken").checked = Boolean(merged.fetch_ba_token);
         if (merged.billing_country) $("billingCountry").value = merged.billing_country;
         applyQuickProxyState();
@@ -4935,7 +5048,7 @@
 
       function syncProviderProxyForBillingCountry() {
         const country = $("billingCountry").value || DEFAULT_BILLING_COUNTRY;
-        const base = $("quickProxy").value.trim() || $("checkoutProxy").value.trim() || DEFAULT_CHECKOUT_PROXY;
+        const base = $("quickProxy").value.trim() || $("checkoutProxy").value.trim() || defaultCheckoutProxy();
         $("providerProxy").value = proxyForRegion(base, providerRegionForBilling(country));
       }
 
@@ -4999,6 +5112,10 @@
 
       function loadProxyConfig() {
         const defaults = defaultProxyConfig();
+        if (!proxyControlsExposed()) {
+          applyProxyConfig(defaults);
+          return;
+        }
         const raw = localStorage.getItem("openai_pay_long_link_proxy_config");
         if (raw) {
           try {
@@ -5224,7 +5341,7 @@
 
       function buildRequestPayload(accessToken) {
         const directMode = isAllNoProxy();
-        const checkoutProxy = directMode ? "" : ($("checkoutProxy").value.trim() || DEFAULT_CHECKOUT_PROXY);
+        const checkoutProxy = directMode ? "" : ($("checkoutProxy").value.trim() || defaultCheckoutProxy());
         const providerProxy = directMode ? "" : $("providerProxy").value.trim();
         const approveRegion = approveRegionForRequest();
         const base = directMode ? "" : ($("quickProxy").value.trim() || checkoutProxy);
@@ -5706,20 +5823,25 @@
         await copyTextWithStatus(currentLongUrl, "已复制主链接。");
       }
 
-      fillCountries();
-      updateCurrency();
-      loadPaneRatio();
-      bindPaneResize();
-      loadProxyConfig();
-      renderEmailStats();
-      renderPrinciple();
-      arrangeUiPanels();
-      resetRunMetrics();
-      renderSteps();
-      updateLockedCountry();
-      resetRetryState(clampMaxRetries($("maxRetries").value));
-      updateTaskControls();
-      updateTokenMeta();
+      async function initializeApp() {
+        await loadRuntimeUiConfig();
+        fillCountries();
+        updateCurrency();
+        loadPaneRatio();
+        bindPaneResize();
+        loadProxyConfig();
+        renderEmailStats();
+        renderPrinciple();
+        arrangeUiPanels();
+        resetRunMetrics();
+        renderSteps();
+        updateLockedCountry();
+        resetRetryState(clampMaxRetries($("maxRetries").value));
+        updateTaskControls();
+        updateTokenMeta();
+      }
+
+      initializeApp();
 
       $("accessToken").addEventListener("input", updateTokenMeta);
       $("quickProxy").addEventListener("input", applyQuickProxyState);

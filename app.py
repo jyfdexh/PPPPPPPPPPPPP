@@ -38,13 +38,15 @@ BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = BASE_DIR / "public"
 DEFAULT_PROXY = os.getenv(
     "OPENAI_PAY_DEFAULT_PROXY",
-    "http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010",
+    "",
 ).strip()
 PROVIDER_STAGE_PROXY = os.getenv("OPENAI_PAY_PROVIDER_PROXY", "").strip()
 GOPAY_PROVIDER_STAGE_PROXY = os.getenv(
     "OPENAI_PAY_GOPAY_PROVIDER_PROXY",
-    "http://dsgytrca-region-ID-sid--t-5:udhhdhdhsjadsa@us2.cliproxy.io:3010",
+    "",
 ).strip()
+UI_PROFILE = os.getenv("OPENAI_PAY_UI_PROFILE", "public").strip().lower()
+LOCAL_UI_PROXY = os.getenv("OPENAI_PAY_LOCAL_PROXY", DEFAULT_PROXY).strip()
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
@@ -4188,6 +4190,50 @@ def is_actionable_stripe_redirect(url: str, preferred_hosts: tuple[str, ...] = (
     return bool(re.search(r"pm-redirects\.stripe\.com|hooks\.stripe\.com|paypal\.com", current, re.I))
 
 
+def normalized_ui_profile(profile: str | None = None) -> str:
+    value = str(UI_PROFILE if profile is None else profile or "").strip().lower()
+    return "local" if value in {"local", "private", "dev"} else "public"
+
+
+def ui_proxy_defaults(profile: str | None = None) -> dict[str, Any]:
+    current_profile = normalized_ui_profile(profile)
+    if current_profile != "local":
+        return {
+            "quick_proxy": "",
+            "checkout_proxy": "",
+            "provider_proxy": "",
+            "all_jp_proxy": False,
+            "all_no_proxy": True,
+        }
+
+    base_proxy = normalize_proxy_url(LOCAL_UI_PROXY)
+    return {
+        "quick_proxy": base_proxy,
+        "checkout_proxy": proxy_for_region(base_proxy, "JP"),
+        "provider_proxy": proxy_for_region(base_proxy, "JP"),
+        "all_jp_proxy": True,
+        "all_no_proxy": False,
+    }
+
+
+def build_ui_config(profile: str | None = None) -> dict[str, Any]:
+    current_profile = normalized_ui_profile(profile)
+    defaults = ui_proxy_defaults(current_profile)
+    proxy_presets: list[str] = []
+    if current_profile == "local":
+        base_proxy = normalize_proxy_url(LOCAL_UI_PROXY)
+        proxy_presets = [
+            proxy_for_region(base_proxy, "JP"),
+            proxy_for_region(base_proxy, "US"),
+        ]
+    return {
+        "profile": current_profile,
+        "expose_proxy_controls": current_profile == "local",
+        "proxy_presets": [item for item in dict.fromkeys(proxy_presets) if item],
+        "proxy_defaults": defaults,
+    }
+
+
 app = FastAPI(title="OpenAI Pay Long Link")
 app.mount("/public", StaticFiles(directory=PUBLIC_DIR), name="public")
 
@@ -4200,6 +4246,11 @@ def index() -> FileResponse:
 @app.get("/api/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
+
+
+@app.get("/api/ui-config")
+def ui_config() -> dict[str, Any]:
+    return build_ui_config()
 
 
 @app.post("/api/long-link", response_model=LongLinkResponse)

@@ -588,12 +588,21 @@ def normalize_approve_retries(value: Any) -> int:
     return max(1, min(parsed, 30))
 
 
+def approve_default_attempt_count() -> int:
+    return APPROVE_ATTEMPT_COUNT_DEFAULT_LOCAL if is_local_ui_profile() else APPROVE_ATTEMPT_COUNT_DEFAULT_SERVER
+
+
+def approve_attempt_count_limit() -> int:
+    return APPROVE_ATTEMPT_COUNT_MAX_LOCAL if is_local_ui_profile() else APPROVE_ATTEMPT_COUNT_MAX_SERVER
+
+
 def normalize_approve_attempt_count(value: Any) -> int:
+    default = approve_default_attempt_count()
     try:
         parsed = int(value)
     except Exception:
-        return 6
-    return max(1, min(parsed, 50))
+        return default
+    return max(1, min(parsed, approve_attempt_count_limit()))
 
 
 def normalize_approve_pool_size(value: Any) -> int:
@@ -613,7 +622,11 @@ def normalize_approve_pool_max_attempts(value: Any) -> int:
 
 
 APPROVE_ESCALATION_TIERS_LOCAL: tuple[int, ...] = (1, 2, 4, 8, 16, 30)
-APPROVE_ESCALATION_TIERS_SERVER: tuple[int, ...] = (1, 2, 4)
+APPROVE_ESCALATION_TIERS_SERVER: tuple[int, ...] = (1, 2)
+APPROVE_ATTEMPT_COUNT_DEFAULT_LOCAL = 6
+APPROVE_ATTEMPT_COUNT_DEFAULT_SERVER = 4
+APPROVE_ATTEMPT_COUNT_MAX_LOCAL = 50
+APPROVE_ATTEMPT_COUNT_MAX_SERVER = 4
 # 兼容旧引用；实际运行请用 approve_escalation_tiers()
 APPROVE_ESCALATION_TIERS: tuple[int, ...] = APPROVE_ESCALATION_TIERS_LOCAL
 
@@ -634,7 +647,7 @@ def approve_extended_pool_size() -> int:
 
 def approve_total_attempts(req: LongLinkRequest | None) -> int:
     if req is None:
-        return len(approve_escalation_tiers())
+        return approve_default_attempt_count()
     return normalize_approve_attempt_count(req.approve_attempt_count)
 
 
@@ -4417,6 +4430,23 @@ def build_ui_config(profile: str | None = None) -> dict[str, Any]:
         "expose_proxy_controls": current_profile == "local",
         "proxy_presets": [item for item in dict.fromkeys(proxy_presets) if item],
         "proxy_defaults": defaults,
+        "approve_defaults": {
+            "attempt_count": (
+                APPROVE_ATTEMPT_COUNT_DEFAULT_LOCAL
+                if current_profile == "local"
+                else APPROVE_ATTEMPT_COUNT_DEFAULT_SERVER
+            ),
+            "max_attempt_count": (
+                APPROVE_ATTEMPT_COUNT_MAX_LOCAL
+                if current_profile == "local"
+                else APPROVE_ATTEMPT_COUNT_MAX_SERVER
+            ),
+            "max_pool_size": (
+                APPROVE_ESCALATION_TIERS_LOCAL[-1]
+                if current_profile == "local"
+                else APPROVE_ESCALATION_TIERS_SERVER[-1]
+            ),
+        },
     }
 
 

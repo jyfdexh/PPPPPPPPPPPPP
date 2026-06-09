@@ -15,6 +15,9 @@ class UiConfigTests(unittest.TestCase):
         self.assertEqual(config["proxy_defaults"]["provider_proxy"], "")
         self.assertTrue(config["proxy_defaults"]["all_no_proxy"])
         self.assertFalse(config["proxy_defaults"]["all_jp_proxy"])
+        self.assertEqual(config["approve_defaults"]["attempt_count"], 4)
+        self.assertEqual(config["approve_defaults"]["max_attempt_count"], 4)
+        self.assertEqual(config["approve_defaults"]["max_pool_size"], 2)
 
     def test_local_ui_config_exposes_local_proxy_defaults(self) -> None:
         original_proxy = app.LOCAL_UI_PROXY
@@ -31,6 +34,9 @@ class UiConfigTests(unittest.TestCase):
         self.assertEqual(config["proxy_defaults"]["provider_proxy"], "")
         self.assertFalse(config["proxy_defaults"]["all_jp_proxy"])
         self.assertTrue(config["proxy_defaults"]["all_no_proxy"])
+        self.assertEqual(config["approve_defaults"]["attempt_count"], 6)
+        self.assertEqual(config["approve_defaults"]["max_attempt_count"], 50)
+        self.assertEqual(config["approve_defaults"]["max_pool_size"], 30)
         self.assertTrue(any("region-US" in item for item in config["proxy_presets"]))
 
 

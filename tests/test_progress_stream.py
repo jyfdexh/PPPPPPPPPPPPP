@@ -264,10 +264,10 @@ class ProgressStreamTests(unittest.TestCase):
         self.assertEqual(app.approve_escalation_wave_attempts(2), 2)
         self.assertEqual(app.approve_escalation_wave_attempts(8), 8)
 
-    def test_approve_escalation_tiers_server_profile_caps_at_four(self) -> None:
+    def test_approve_escalation_tiers_server_profile_caps_at_two(self) -> None:
         with patch.object(app, "UI_PROFILE", "public"):
-            self.assertEqual(app.approve_escalation_tiers(), (1, 2, 4))
-            self.assertEqual(app.approve_escalation_tier_label(), "1→2→4")
+            self.assertEqual(app.approve_escalation_tiers(), (1, 2))
+            self.assertEqual(app.approve_escalation_tier_label(), "1→2")
 
     def test_approve_escalation_tiers_local_profile_keeps_thirty(self) -> None:
         with patch.object(app, "UI_PROFILE", "local"):
@@ -276,23 +276,30 @@ class ProgressStreamTests(unittest.TestCase):
 
     def test_approve_escalation_exhausted_detail_mentions_server_limit(self) -> None:
         with patch.object(app, "UI_PROFILE", "public"):
-            detail = app.approve_escalation_exhausted_detail("blocked", "blocked", total_attempts=3)
-        self.assertIn("3 次尝试", detail)
-        self.assertIn("最高 4 路", detail)
+            detail = app.approve_escalation_exhausted_detail("blocked", "blocked", total_attempts=4)
+        self.assertIn("4 次尝试", detail)
+        self.assertIn("最高 2 路", detail)
 
     def test_normalize_approve_attempt_count_defaults_to_six(self) -> None:
-        self.assertEqual(app.normalize_approve_attempt_count(None), 6)
-        self.assertEqual(app.normalize_approve_attempt_count(8), 8)
+        with patch.object(app, "UI_PROFILE", "local"):
+            self.assertEqual(app.normalize_approve_attempt_count(None), 6)
+            self.assertEqual(app.normalize_approve_attempt_count(8), 8)
+
+    def test_normalize_approve_attempt_count_server_defaults_and_caps(self) -> None:
+        with patch.object(app, "UI_PROFILE", "public"):
+            self.assertEqual(app.normalize_approve_attempt_count(None), 4)
+            self.assertEqual(app.normalize_approve_attempt_count(8), 4)
 
     def test_approve_pool_size_for_round_extended_local_uses_thirty(self) -> None:
         with patch.object(app, "UI_PROFILE", "local"):
             self.assertEqual(app.approve_pool_size_for_round(7), 30)
             self.assertEqual(app.approve_pool_size_for_round(8), 30)
 
-    def test_approve_pool_size_for_round_extended_server_caps_at_four(self) -> None:
+    def test_approve_pool_size_for_round_extended_server_caps_at_two(self) -> None:
         with patch.object(app, "UI_PROFILE", "public"):
-            self.assertEqual(app.approve_pool_size_for_round(4), 4)
-            self.assertEqual(app.approve_pool_size_for_round(7), 4)
+            self.assertEqual(app.approve_pool_size_for_round(2), 2)
+            self.assertEqual(app.approve_pool_size_for_round(4), 2)
+            self.assertEqual(app.approve_pool_size_for_round(7), 2)
 
     def test_chatgpt_approve_escalating_final_round_failure_raises_immediately(self) -> None:
         checkout = {

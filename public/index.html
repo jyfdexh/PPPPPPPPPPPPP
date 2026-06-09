@@ -2792,7 +2792,7 @@
                 </div>
                 <div>
                   <label for="approveAttemptCount">approve 尝试次数</label>
-                  <input id="approveAttemptCount" type="number" min="1" max="50" step="1" value="6" />
+                  <input id="approveAttemptCount" type="number" min="1" max="4" step="1" value="4" />
                 </div>
                 <div>
                   <label for="stripeKey">Stripe Publishable Key</label>
@@ -3285,6 +3285,11 @@
           all_jp_proxy: false,
           all_no_proxy: true,
         },
+        approve_defaults: {
+          attempt_count: 4,
+          max_attempt_count: 4,
+          max_pool_size: 2,
+        },
       };
       let runtimeUiConfig = { ...DEFAULT_UI_CONFIG, proxy_defaults: { ...DEFAULT_UI_CONFIG.proxy_defaults } };
       const PAYPAL_COUNTRIES = [
@@ -3296,7 +3301,7 @@
       const QUICK_PROXY_REGION_PATTERN = /region-([a-z]{2})/i;
       const DEFAULT_MAX_RETRIES = 1;
       const DEFAULT_APPROVE_RETRIES = 10;
-      const DEFAULT_APPROVE_ATTEMPT_COUNT = 6;
+      const DEFAULT_APPROVE_ATTEMPT_COUNT = 4;
       function paypalPaymentStrategy() {
         return $("billingCountry").value === "DE" ? "jp_de" : "jp_us";
       }
@@ -3428,10 +3433,24 @@
         return Math.min(20, Math.max(1, parsed));
       }
 
+      function approveAttemptDefaults() {
+        return runtimeUiConfig?.approve_defaults || DEFAULT_UI_CONFIG.approve_defaults;
+      }
+
+      function defaultApproveAttemptCount() {
+        const parsed = Number.parseInt(String(approveAttemptDefaults().attempt_count || DEFAULT_APPROVE_ATTEMPT_COUNT), 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_APPROVE_ATTEMPT_COUNT;
+      }
+
+      function maxApproveAttemptCount() {
+        const parsed = Number.parseInt(String(approveAttemptDefaults().max_attempt_count || 50), 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
+      }
+
       function clampApproveAttemptCount(value) {
-        const parsed = Number.parseInt(String(value || DEFAULT_APPROVE_ATTEMPT_COUNT), 10);
-        if (!Number.isFinite(parsed)) return DEFAULT_APPROVE_ATTEMPT_COUNT;
-        return Math.max(1, Math.min(parsed, 50));
+        const parsed = Number.parseInt(String(value || defaultApproveAttemptCount()), 10);
+        if (!Number.isFinite(parsed)) return defaultApproveAttemptCount();
+        return Math.max(1, Math.min(parsed, maxApproveAttemptCount()));
       }
 
       function proxyControlsExposed() {
@@ -3501,10 +3520,25 @@
                 ...DEFAULT_UI_CONFIG.proxy_defaults,
                 ...((payload || {}).proxy_defaults || {}),
               },
+              approve_defaults: {
+                ...DEFAULT_UI_CONFIG.approve_defaults,
+                ...((payload || {}).approve_defaults || {}),
+              },
             };
           }
         } catch {
-          runtimeUiConfig = { ...DEFAULT_UI_CONFIG, proxy_defaults: { ...DEFAULT_UI_CONFIG.proxy_defaults } };
+          runtimeUiConfig = {
+            ...DEFAULT_UI_CONFIG,
+            proxy_defaults: { ...DEFAULT_UI_CONFIG.proxy_defaults },
+            approve_defaults: { ...DEFAULT_UI_CONFIG.approve_defaults },
+          };
+        }
+        const approveAttemptInput = $("approveAttemptCount");
+        if (approveAttemptInput) {
+          approveAttemptInput.max = String(maxApproveAttemptCount());
+          if (!approveAttemptInput.dataset.userTouched) {
+            approveAttemptInput.value = String(defaultApproveAttemptCount());
+          }
         }
         applyRuntimeUiMode();
       }
@@ -3712,7 +3746,7 @@
           provider_proxy: defaultProviderProxy(),
           max_retries: DEFAULT_MAX_RETRIES,
           approve_retries: DEFAULT_APPROVE_RETRIES,
-          approve_attempt_count: DEFAULT_APPROVE_ATTEMPT_COUNT,
+          approve_attempt_count: defaultApproveAttemptCount(),
           approve_proxy_region: "JP",
           all_jp_proxy: Boolean(proxyDefaults.all_jp_proxy),
           all_no_proxy: proxyDefaults.all_no_proxy !== false,
@@ -5929,6 +5963,7 @@
         $("approveRetries").value = String(clampApproveRetries($("approveRetries").value));
       });
       $("approveAttemptCount").addEventListener("change", () => {
+        $("approveAttemptCount").dataset.userTouched = "1";
         $("approveAttemptCount").value = String(clampApproveAttemptCount($("approveAttemptCount").value));
       });
       $("fetchBaToken").addEventListener("change", () => {

@@ -26,6 +26,20 @@ class PublicPayPalInputTests(unittest.TestCase):
 
         self.assertEqual(app.resolve_public_paypal_input(req), "tok_from_session_json")
 
+    def test_access_token_only_uses_server_defaults(self) -> None:
+        req = app.PublicPayPalLinkRequest(accessToken="tok_server_default")
+
+        inner = app.build_public_paypal_request(req)
+
+        self.assertEqual(inner.access_token, "tok_server_default")
+        self.assertEqual(inner.billing_country, "DE")
+        self.assertEqual(inner.payment_locale, "de")
+        self.assertEqual(inner.payment_strategy, "jp_de")
+        self.assertTrue(inner.all_no_proxy)
+        self.assertFalse(inner.fetch_ba_token)
+        self.assertEqual(inner.checkout_proxy, "")
+        self.assertEqual(inner.provider_proxy, "")
+
     def test_public_request_defaults_match_page_de_profile(self) -> None:
         req = app.PublicPayPalLinkRequest(session="tok_page_defaults")
 

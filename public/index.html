@@ -2887,6 +2887,12 @@
               <div class="row">
                 <label>最小请求</label>
                 <code>{
+  "accessToken": "eyJ..."
+}</code>
+              </div>
+              <div class="row">
+                <label>session 请求</label>
+                <code>{
   "session": {
     "user": { "email": "demo@example.com" },
     "accessToken": "eyJ..."
@@ -2894,19 +2900,11 @@
 }</code>
               </div>
               <div class="row">
-                <label>Token 请求</label>
-                <code>{
-  "session": "eyJ..."
-}</code>
-              </div>
-              <div class="row">
                 <label>curl 示例</label>
                 <code>curl --location --request POST 'https://pay.2333330.xyz/getPayPal_link' \
   --header 'Content-Type: application/json' \
   --data-raw '{
-    "session": {
-      "accessToken": "eyJ..."
-    }
+    "accessToken": "eyJ..."
   }'</code>
               </div>
               <div class="row">

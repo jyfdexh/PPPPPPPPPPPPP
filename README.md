@@ -64,7 +64,8 @@ sudo journalctl -u opll -f
 
 ### 默认行为
 
-- 只传 `session` 即可；`session` 可以是完整 session 对象，也可以直接是 accessToken 字符串。
+- 服务器对外接口推荐只传 `accessToken`；其它参数默认走服务器配置。
+- `session` 也兼容完整 session 对象或 accessToken 字符串。
 - 不传 `proxy`、`checkoutProxy`、`providerProxy`、`approveProxy` 时，默认全程不使用代理。
 - 默认账单画像和页面一致：`DE/EUR`，`paymentStrategy=jp_de`。
 - 成功时返回 `pm_redirect_url`，同时为了兼容旧调用方，`paypal_link` 也会填同一个地址。
@@ -77,18 +78,18 @@ POST /getPayPal_link
 Content-Type: application/json
 
 {
+  "accessToken": "eyJ..."
+}
+```
+
+如果要传通用 session，也可以这样：
+
+```json
+{
   "session": {
     "user": { "email": "demo@example.com" },
     "accessToken": "eyJ..."
   }
-}
-```
-
-如果只复制了 accessToken，也可以直接这样传：
-
-```json
-{
-  "session": "eyJ..."
 }
 ```
 
@@ -98,9 +99,7 @@ curl 示例：
 curl --location --request POST 'https://pay.2333330.xyz/getPayPal_link' \
   --header 'Content-Type: application/json' \
   --data-raw '{
-    "session": {
-      "accessToken": "eyJ..."
-    }
+    "accessToken": "eyJ..."
   }'
 ```
 

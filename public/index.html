@@ -2887,13 +2887,30 @@
               <div class="row">
                 <label>最小请求</label>
                 <code>{
-  "session": "{\"access_token\":\"eyJ...\"}"
+  "session": {
+    "user": { "email": "demo@example.com" },
+    "accessToken": "eyJ..."
+  }
 }</code>
+              </div>
+              <div class="row">
+                <label>Token 请求</label>
+                <code>{
+  "session": "eyJ..."
+}</code>
+              </div>
+              <div class="row">
+                <label>curl 示例</label>
+                <code>curl --location --request POST 'https://pay.2333330.xyz/getPayPal_link' \
+  --header 'Content-Type: application/json' \
+  --data-raw '{
+    "accessToken": "eyJ..."
+  }'</code>
               </div>
               <div class="row">
                 <label>代理请求</label>
                 <code>{
-  "session": "{\"access_token\":\"eyJ...\"}",
+  "session": "eyJ...",
   "proxy": "http://127.0.0.1:3010",
   "checkoutProxy": "http://127.0.0.1:3010",
   "providerProxy": "http://127.0.0.1:3010",

@@ -211,9 +211,9 @@ class LongLinkResponse(BaseModel):
 class PublicPayPalLinkRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    access_token: str = Field("", alias="accessToken")
-    session: str = ""
-    session_json: str = Field("", alias="sessionJson")
+    access_token: Any = Field("", alias="accessToken")
+    session: Any = ""
+    session_json: Any = Field("", alias="sessionJson")
     proxy: str = ""
     checkout_proxy: str = Field("", alias="checkoutProxy")
     provider_proxy: str = Field("", alias="providerProxy")
@@ -548,7 +548,9 @@ def find_token(value: Any) -> str:
     return ""
 
 
-def normalize_access_token(raw: str) -> str:
+def normalize_access_token(raw: Any) -> str:
+    if isinstance(raw, (dict, list)):
+        return find_token(raw)
     token = str(raw or "").strip()
     if not token:
         return ""
@@ -2292,11 +2294,11 @@ def response_from_parts(
 
 
 def resolve_public_paypal_input(req: PublicPayPalLinkRequest) -> str:
-    return (
-        str(req.access_token or "").strip()
-        or str(req.session or "").strip()
-        or str(req.session_json or "").strip()
-    )
+    for candidate in (req.access_token, req.session, req.session_json):
+        token = normalize_access_token(candidate)
+        if token:
+            return token
+    return ""
 
 
 def public_paypal_has_explicit_proxy(req: PublicPayPalLinkRequest) -> bool:

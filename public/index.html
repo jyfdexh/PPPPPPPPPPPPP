@@ -2875,19 +2875,28 @@
             <div class="api-panel">
               <div>
                 <label style="margin-bottom: 4px">对外接口用法</label>
-                <p>给外部程序对接时，直接调用 <code>/getPayPal_link</code>。内部会复用当前 PP 提取主流程；只有拿到 PayPal 授权长链时才返回 <code>success=true</code>。</p>
+                <p>外部程序调用 <code>/getPayPal_link</code> 即可复用当前 PP 提取主流程。默认只提取 <code>pm-redirects</code> 中转地址，不额外请求 PayPal BA 链；不传代理字段时全程直连。</p>
               </div>
               <div class="row">
                 <label>请求地址</label>
                 <code>POST /getPayPal_link</code>
               </div>
               <div class="row">
-                <label>请求示例</label>
+                <label>最小请求</label>
                 <code>{
-  "accessToken": "{\"access_token\":\"eyJ...\"}",
+  "session": "{\"access_token\":\"eyJ...\"}"
+}</code>
+              </div>
+              <div class="row">
+                <label>代理请求</label>
+                <code>{
+  "session": "{\"access_token\":\"eyJ...\"}",
+  "proxy": "http://127.0.0.1:3010",
+  "checkoutProxy": "http://127.0.0.1:3010",
+  "providerProxy": "http://127.0.0.1:3010",
+  "approveProxy": "http://127.0.0.1:3010",
   "maxRetries": 5,
-  "checkout_proxy": "socks5://bj2m1188418-region-jp:nanno2@us.cliproxy.io:3010",
-  "provider_proxy": "socks5://bj2m1188418-region-US:nanno2@us.cliproxy.io:3010"
+  "approveRetries": 10
 }</code>
               </div>
               <div class="row">
@@ -2895,8 +2904,10 @@
                 <code>{
   "success": true,
   "code": "SUCCESS",
-  "message": "第 1 / 5 轮成功生成 PP 链。",
-  "paypal_link": "https://www.paypal.com/agreements/approve?ba_token=BA-1SU08173WH746842C",
+  "message": "ok",
+  "paypal_link": "https://pm-redirects.stripe.com/authorize/...",
+  "pm_redirect_url": "https://pm-redirects.stripe.com/authorize/...",
+  "fallback": false,
   "attempt_count": 1,
   "max_attempts": 5
 }</code>
@@ -2906,10 +2917,13 @@
                 <code>{
   "success": false,
   "code": "PAYPAL_LINK_NOT_FOUND",
-  "message": "provider 提取失败，已回退 hosted。",
+  "message": "redirect url resolution timeout: keys=[...]",
+  "paypal_link": "",
+  "pm_redirect_url": "",
+  "fallback": true,
   "attempt_count": 5,
   "max_attempts": 5,
-  "last_error": "provider 提取失败，已回退 hosted。",
+  "last_error": "redirect url resolution timeout: keys=[...]",
   "retry_history": [
     { "attempt": 1, "ok": false, "error": "..." }
   ]

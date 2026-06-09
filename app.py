@@ -210,10 +210,13 @@ class PublicPayPalLinkRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     access_token: str = Field("", alias="accessToken")
+    session: str = ""
     session_json: str = Field("", alias="sessionJson")
     proxy: str = ""
     checkout_proxy: str = Field("", alias="checkoutProxy")
     provider_proxy: str = Field("", alias="providerProxy")
+    approve_proxy: str = Field("", alias="approveProxy")
+    approve_proxy_region: str = Field("JP", alias="approveProxyRegion")
     max_retries: int = Field(5, alias="maxRetries")
     approve_retries: int = Field(10, alias="approveRetries")
 
@@ -223,7 +226,9 @@ class PublicPayPalLinkResponse(BaseModel):
     code: str
     message: str
     paypal_link: str
+    pm_redirect_url: str = ""
     hosted_long_url: str
+    fallback: bool = False
     attempt_count: int
     max_attempts: int
     retries_used: int
@@ -2285,33 +2290,55 @@ def response_from_parts(
 
 
 def resolve_public_paypal_input(req: PublicPayPalLinkRequest) -> str:
-    return str(req.access_token or "").strip() or str(req.session_json or "").strip()
+    return (
+        str(req.access_token or "").strip()
+        or str(req.session or "").strip()
+        or str(req.session_json or "").strip()
+    )
+
+
+def public_paypal_has_explicit_proxy(req: PublicPayPalLinkRequest) -> bool:
+    return any(
+        str(getattr(req, field, "") or "").strip()
+        for field in ("proxy", "checkout_proxy", "provider_proxy", "approve_proxy")
+    )
 
 
 def build_public_paypal_request(req: PublicPayPalLinkRequest) -> LongLinkRequest:
+    use_direct_mode = not public_paypal_has_explicit_proxy(req)
     return LongLinkRequest(
         accessToken=resolve_public_paypal_input(req),
         link_type="paypal",
         proxy=req.proxy,
         checkoutProxy=req.checkout_proxy,
         providerProxy=req.provider_proxy,
-        approveProxyRegion=getattr(req, "approve_proxy_region", "JP") or "JP",
+        approveProxy=req.approve_proxy,
+        approveProxyRegion=req.approve_proxy_region or "JP",
         maxRetries=req.max_retries,
         approveRetries=req.approve_retries,
+        fetchBaToken=False,
+        allNoProxy=use_direct_mode,
     )
 
 
 def build_public_paypal_success(result: LongLinkResponse) -> PublicPayPalLinkResponse:
     ba_link = result.long_url if is_paypal_ba_url(result.long_url) else ""
-    pm_link = result.pm_redirect_url or (result.long_url if is_pm_redirect_url(result.long_url) else "")
-    primary_link = ba_link or pm_link
+    pm_link = (
+        result.pm_redirect_url
+        or pm_redirect_snapshot(result.stripe_redirect_url)
+        or (result.long_url if is_pm_redirect_url(result.long_url) else "")
+        or pm_redirect_snapshot(result.provider_redirect_url)
+    )
+    primary_link = pm_link or ba_link
     success = bool(primary_link)
     return PublicPayPalLinkResponse(
         success=success,
         code="SUCCESS" if success else "PAYPAL_LINK_NOT_FOUND",
         message="ok" if success else "not found",
         paypal_link=primary_link,
+        pm_redirect_url=pm_link,
         hosted_long_url=result.long_url if result.fallback else "",
+        fallback=result.fallback,
         attempt_count=result.attempt_count,
         max_attempts=result.max_attempts,
         retries_used=max(0, result.attempt_count - 1),
@@ -2338,7 +2365,9 @@ def build_public_paypal_failure(
         code="UPSTREAM_ERROR",
         message=error_text,
         paypal_link="",
+        pm_redirect_url="",
         hosted_long_url="",
+        fallback=False,
         attempt_count=attempt_count,
         max_attempts=max_attempts,
         retries_used=max(0, attempt_count - 1),
@@ -4461,7 +4490,9 @@ def get_paypal_link(req: PublicPayPalLinkRequest) -> PublicPayPalLinkResponse:
             code="INVALID_INPUT",
             message="invalid",
             paypal_link="",
+            pm_redirect_url="",
             hosted_long_url="",
+            fallback=False,
             attempt_count=0,
             max_attempts=max_attempts,
             retries_used=0,
@@ -4499,14 +4530,17 @@ def get_paypal_link(req: PublicPayPalLinkRequest) -> PublicPayPalLinkResponse:
     inner_req = build_public_paypal_request(req)
     try:
         result = generate_long_link_core(inner_req, progress=progress)
-        if result.ok and (is_paypal_ba_url(result.long_url) or is_pm_redirect_url(result.pm_redirect_url or result.long_url)):
-            return build_public_paypal_success(result)
+        success_response = build_public_paypal_success(result)
+        if result.ok and success_response.success:
+            return success_response
         return PublicPayPalLinkResponse(
             success=False,
             code="PAYPAL_LINK_NOT_FOUND",
             message=result.provider_error or "not found",
             paypal_link="",
+            pm_redirect_url=result.pm_redirect_url,
             hosted_long_url=result.long_url,
+            fallback=result.fallback,
             attempt_count=result.attempt_count,
             max_attempts=result.max_attempts,
             retries_used=max(0, result.attempt_count - 1),

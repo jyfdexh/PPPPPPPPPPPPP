@@ -629,11 +629,41 @@ class ProgressStreamTests(unittest.TestCase):
 
         self.assertEqual(inner.approve_retries, 12)
 
-    def test_get_paypal_link_returns_success_when_approve_url_exists(self) -> None:
+    def test_public_paypal_request_accepts_session_and_defaults_to_direct_pm_redirect(self) -> None:
         req = app.PublicPayPalLinkRequest(
-            accessToken='{"access_token":"tok_abcdefghijklmnopqrstuvwxyz"}',
+            session='{"access_token":"tok_abcdefghijklmnopqrstuvwxyz"}',
             maxRetries=5,
         )
+
+        inner = app.build_public_paypal_request(req)
+
+        self.assertEqual(inner.access_token, '{"access_token":"tok_abcdefghijklmnopqrstuvwxyz"}')
+        self.assertEqual(app.normalize_access_token(inner.access_token), "tok_abcdefghijklmnopqrstuvwxyz")
+        self.assertEqual(inner.link_type, "paypal")
+        self.assertTrue(inner.all_no_proxy)
+        self.assertFalse(inner.fetch_ba_token)
+        self.assertEqual(inner.proxy, "")
+        self.assertEqual(inner.checkout_proxy, "")
+        self.assertEqual(inner.provider_proxy, "")
+
+    def test_public_paypal_request_uses_proxy_when_explicit_proxy_is_provided(self) -> None:
+        req = app.PublicPayPalLinkRequest(
+            session='{"access_token":"tok_abcdefghijklmnopqrstuvwxyz"}',
+            proxy="http://127.0.0.1:3010",
+            maxRetries=5,
+        )
+
+        inner = app.build_public_paypal_request(req)
+
+        self.assertFalse(inner.all_no_proxy)
+        self.assertEqual(inner.proxy, "http://127.0.0.1:3010")
+
+    def test_get_paypal_link_returns_success_when_pm_redirect_exists(self) -> None:
+        req = app.PublicPayPalLinkRequest(
+            session='{"access_token":"tok_abcdefghijklmnopqrstuvwxyz"}',
+            maxRetries=5,
+        )
+        pm_redirect = "https://pm-redirects.stripe.com/authorize/test"
 
         fake_result = app.LongLinkResponse(
             ok=True,
@@ -645,8 +675,9 @@ class ProgressStreamTests(unittest.TestCase):
             link_type="paypal",
             payment_method_type="paypal",
             payment_method_id="pm_test_ok",
-            stripe_redirect_url="https://pm-redirects.stripe.com/test",
+            stripe_redirect_url=pm_redirect,
             provider_redirect_url="https://www.paypal.com/agreements/approve?ba_token=BA-1SU08173WH746842C",
+            pm_redirect_url=pm_redirect,
             fallback=False,
             provider_error="",
             stripe_hosted_url="https://checkout.stripe.com/c/pay/cs_test_ok",
@@ -661,10 +692,8 @@ class ProgressStreamTests(unittest.TestCase):
 
         self.assertTrue(response.success)
         self.assertEqual(response.code, "SUCCESS")
-        self.assertEqual(
-            response.paypal_link,
-            "https://www.paypal.com/agreements/approve?ba_token=BA-1SU08173WH746842C",
-        )
+        self.assertEqual(response.paypal_link, pm_redirect)
+        self.assertEqual(response.pm_redirect_url, pm_redirect)
         self.assertEqual(response.attempt_count, 1)
         self.assertEqual(response.max_attempts, 5)
         self.assertEqual(response.retries_used, 0)

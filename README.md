@@ -1,8 +1,40 @@
 # OpenAI Pay Long Link
 
-### 以后服务器同步 GitHub 更新：sudo opll-update
-Standalone tool for generating a hosted payment long link from a ChatGPT access token.
-### 部署:
+用于把 ChatGPT session / access token 转成 Stripe 中转地址或支付长链的本地服务。
+
+## 本地运行
+
+```powershell
+cd D:\nanno\Gpt_Plus\转长链\opll
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app:app --host 127.0.0.1 --port 8787
+```
+
+打开：
+
+```text
+http://127.0.0.1:8787
+```
+
+## Docker
+
+```bash
+docker compose up -d --build
+```
+
+停止：
+
+```bash
+docker compose down
+```
+
+## 服务器部署
+
+一键安装：
+
+```bash
 curl -fsSL "https://github.com/jyfdexh/PPPPPPPPPPPPP/raw/refs/heads/main/deploy/install.sh" | sudo env \
   DOMAIN=pay.2333330.xyz \
   BIND_DOMAIN=yes \
@@ -14,117 +46,9 @@ curl -fsSL "https://github.com/jyfdexh/PPPPPPPPPPPPP/raw/refs/heads/main/deploy/
   APP_PORT=8787 \
   NONINTERACTIVE=yes \
   bash
-
-  
-## Run
-
-```powershell
-cd openai_pay_long_link
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app:app --host 127.0.0.1 --port 8787
 ```
 
-Open:
-
-```text
-http://127.0.0.1:8787
-```
-
-## Docker
-
-```bash
-cd openai_pay_long_link
-docker compose up -d --build
-```
-
-Open:
-
-```text
-http://127.0.0.1:8787
-```
-
-Stop:
-
-```bash
-docker compose down
-```
-
-The server uses a built-in default outbound proxy when the page does not submit
-one. Override it at deploy time with `OPENAI_PAY_DEFAULT_PROXY`; set it to an
-empty value to use direct outbound network.
-
-For PP provider extraction, the server switches the post-checkout
-Stripe/Provider stage to a US proxy. By default it derives this from the
-built-in proxy by changing `region-JP` to `region-US`; override with
-`OPENAI_PAY_PROVIDER_PROXY`. GoPay switches the post-checkout provider stage
-to the built-in Indonesia proxy; override with `OPENAI_PAY_GOPAY_PROVIDER_PROXY`.
-
-## API
-
-```http
-POST /api/long-link
-Content-Type: application/json
-
-{
-  "accessToken": "eyJ...",
-  "proxy": "",
-  "billing_country": "US",
-  "payment_locale": "en",
-  "stripe_publishable_key": ""
-}
-```
-
-The server creates a ChatGPT checkout, calls:
-
-```text
-https://api.stripe.com/v1/payment_pages/{cs_id}/init
-```
-
-Then it reads `stripe_hosted_url` and changes:
-
-```text
-https://checkout.stripe.com -> https://pay.openai.com
-```
-
-## Link Types
-
-- `hosted`: normal payment long link, defaults to `US/USD`; country remains selectable.
-- `paypal`: PP redirect extraction, checkout locked to `US/USD`, uses a Japan billing address.
-- `gopay`: GoPay redirect extraction, checkout locked to `ID/IDR`, uses an Indonesia billing address. Accounts with active USD checkout/subscription state may be blocked by Stripe from creating an IDR checkout.
-
-For `paypal` and `gopay`, if Stripe provider redirect extraction fails but the
-hosted checkout URL exists, the API falls back to the hosted long link and
-returns `fallback: true` plus `provider_error`.
-
-## 服务器一键部署
-
-脚本风格参考 `mail 2`：首次安装后会创建 systemd 服务，并安装 `opll-update` 命令。后续你手动执行更新命令时，服务器会从 GitHub 拉取最新代码、更新依赖并重启服务。
-
-交互式安装：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jyfdexh/PPPPPPPPPPPPP/main/deploy/install.sh | sudo bash
-```
-
-非交互式安装示例：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jyfdexh/PPPPPPPPPPPPP/main/deploy/install.sh | sudo env \
-  DOMAIN=pay.2333330.xyz \
-  BIND_DOMAIN=yes \
-  USE_CLOUDFLARE=yes \
-  REPO_URL=https://github.com/jyfdexh/PPPPPPPPPPPPP.git \
-  BRANCH=main \
-  APP_DIR=/opt/opll \
-  APP_HOST=127.0.0.1 \
-  APP_PORT=8787 \
-  NONINTERACTIVE=yes \
-  bash
-```
-
-常用命令：
+手动更新：
 
 ```bash
 sudo opll-update
@@ -132,14 +56,114 @@ sudo systemctl status opll
 sudo journalctl -u opll -f
 ```
 
-代理说明：
+私有仓库更新时，GitHub 不支持账号密码拉取。服务器需要配置 PAT 或 SSH Deploy Key 后再执行 `sudo opll-update`。
 
-- 安装时 `OPENAI_PAY_DEFAULT_PROXY` 留空表示后端默认直连。
-- 如果服务器本机运行了 `127.0.0.1:3010` 代理，systemd 直跑模式可以直接填这个地址。
-- 不启用自动更新。需要同步 GitHub 时，手动执行 `sudo opll-update`。
+## `/getPayPal_link` 接口
 
-域名说明：
+这个接口复用当前 PP 提取主流程，但默认只提取 `https://pm-redirects.stripe.com/authorize...` 中转地址，不再额外请求 PayPal BA 链。把这个中转地址粘贴到浏览器后，Stripe 会继续跳到 `https://www.paypal.com/agreements/approve?ba_token=...`。
 
-- 默认域名是 `pay.2333330.xyz`。
-- 使用 Cloudflare 代理时，DNS 添加 A 记录：`pay.2333330.xyz` 指向服务器 IP，并开启橙色云。
-- Cloudflare SSL/TLS 模式选择 `Full`。脚本会生成自签源站证书；如果要用 `Full strict`，需要替换为 Cloudflare Origin Certificate。
+### 默认行为
+
+- 只传 `session` 即可。
+- 不传 `proxy`、`checkoutProxy`、`providerProxy`、`approveProxy` 时，默认全程不使用代理。
+- 成功时返回 `pm_redirect_url`，同时为了兼容旧调用方，`paypal_link` 也会填同一个地址。
+- 接口固定按 `fetchBaToken=false` 运行，也就是拿到 Stripe 中转地址就算成功。
+
+### 请求
+
+```http
+POST /getPayPal_link
+Content-Type: application/json
+
+{
+  "session": "{\"access_token\":\"eyJ...\"}"
+}
+```
+
+也兼容旧字段：
+
+```json
+{
+  "accessToken": "{\"access_token\":\"eyJ...\"}",
+  "sessionJson": "{\"access_token\":\"eyJ...\"}"
+}
+```
+
+如需显式走代理，才传下面字段；只要任意代理字段不为空，就不会启用默认直连：
+
+```json
+{
+  "session": "{\"access_token\":\"eyJ...\"}",
+  "proxy": "http://127.0.0.1:3010",
+  "checkoutProxy": "http://127.0.0.1:3010",
+  "providerProxy": "http://127.0.0.1:3010",
+  "approveProxy": "http://127.0.0.1:3010",
+  "approveProxyRegion": "JP",
+  "maxRetries": 5,
+  "approveRetries": 10
+}
+```
+
+### 成功返回
+
+```json
+{
+  "success": true,
+  "code": "SUCCESS",
+  "message": "ok",
+  "paypal_link": "https://pm-redirects.stripe.com/authorize/...",
+  "pm_redirect_url": "https://pm-redirects.stripe.com/authorize/...",
+  "hosted_long_url": "",
+  "fallback": false,
+  "attempt_count": 1,
+  "max_attempts": 5,
+  "retries_used": 0,
+  "cs_id": "cs_live_...",
+  "billing_country": "US",
+  "currency": "USD",
+  "provider_error": "",
+  "last_error": "",
+  "provider_redirect_url": "",
+  "stripe_redirect_url": "https://pm-redirects.stripe.com/authorize/...",
+  "stripe_hosted_url": "https://checkout.stripe.com/c/pay/cs_live_...",
+  "retry_history": []
+}
+```
+
+### 失败返回
+
+```json
+{
+  "success": false,
+  "code": "PAYPAL_LINK_NOT_FOUND",
+  "message": "redirect url resolution timeout: keys=[...]",
+  "paypal_link": "",
+  "pm_redirect_url": "",
+  "hosted_long_url": "https://pay.openai.com/c/pay/cs_live_...",
+  "fallback": true,
+  "attempt_count": 5,
+  "max_attempts": 5,
+  "retries_used": 4,
+  "last_error": "redirect url resolution timeout: keys=[...]",
+  "retry_history": [
+    { "attempt": 1, "ok": false, "error": "..." }
+  ]
+}
+```
+
+## `/api/long-link` 接口
+
+主页面使用这个接口生成 hosted、PayPal、GoPay 等链接，字段更多，适合前端调试和完整流程。
+
+```http
+POST /api/long-link
+Content-Type: application/json
+
+{
+  "accessToken": "eyJ...",
+  "link_type": "paypal",
+  "billing_country": "US",
+  "payment_locale": "en",
+  "fetchBaToken": false
+}
+```

@@ -66,6 +66,7 @@ sudo journalctl -u opll -f
 
 - 只传 `session` 即可；`session` 可以是完整 session 对象，也可以直接是 accessToken 字符串。
 - 不传 `proxy`、`checkoutProxy`、`providerProxy`、`approveProxy` 时，默认全程不使用代理。
+- 默认账单画像和页面一致：`DE/EUR`，`paymentStrategy=jp_de`。
 - 成功时返回 `pm_redirect_url`，同时为了兼容旧调用方，`paypal_link` 也会填同一个地址。
 - 接口固定按 `fetchBaToken=false` 运行，也就是拿到 Stripe 中转地址就算成功。
 
@@ -97,7 +98,9 @@ curl 示例：
 curl --location --request POST 'https://pay.2333330.xyz/getPayPal_link' \
   --header 'Content-Type: application/json' \
   --data-raw '{
-    "accessToken": "eyJ..."
+    "session": {
+      "accessToken": "eyJ..."
+    }
   }'
 ```
 

@@ -219,8 +219,13 @@ class PublicPayPalLinkRequest(BaseModel):
     provider_proxy: str = Field("", alias="providerProxy")
     approve_proxy: str = Field("", alias="approveProxy")
     approve_proxy_region: str = Field("JP", alias="approveProxyRegion")
+    billing_country: str = Field("DE", alias="billingCountry")
+    payment_locale: str = Field("de", alias="paymentLocale")
+    payment_strategy: str = Field("jp_de", alias="paymentStrategy")
     max_retries: int = Field(5, alias="maxRetries")
     approve_retries: int = Field(10, alias="approveRetries")
+    approve_pool_size: int = Field(30, alias="approvePoolSize")
+    approve_pool_max_attempts: int = Field(30, alias="approvePoolMaxAttempts")
 
 
 class PublicPayPalLinkResponse(BaseModel):
@@ -2318,8 +2323,13 @@ def build_public_paypal_request(req: PublicPayPalLinkRequest) -> LongLinkRequest
         providerProxy=req.provider_proxy,
         approveProxy=req.approve_proxy,
         approveProxyRegion=req.approve_proxy_region or "JP",
+        billing_country=normalize_country(req.billing_country or "DE"),
+        payment_locale=req.payment_locale or "de",
+        paymentStrategy=req.payment_strategy or "jp_de",
         maxRetries=req.max_retries,
         approveRetries=req.approve_retries,
+        approvePoolSize=req.approve_pool_size,
+        approvePoolMaxAttempts=req.approve_pool_max_attempts,
         fetchBaToken=False,
         allNoProxy=use_direct_mode,
     )

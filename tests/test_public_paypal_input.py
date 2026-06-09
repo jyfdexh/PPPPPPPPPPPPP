@@ -26,6 +26,34 @@ class PublicPayPalInputTests(unittest.TestCase):
 
         self.assertEqual(app.resolve_public_paypal_input(req), "tok_from_session_json")
 
+    def test_public_request_defaults_match_page_de_profile(self) -> None:
+        req = app.PublicPayPalLinkRequest(session="tok_page_defaults")
+
+        inner = app.build_public_paypal_request(req)
+
+        self.assertEqual(inner.access_token, "tok_page_defaults")
+        self.assertEqual(inner.billing_country, "DE")
+        self.assertEqual(inner.payment_locale, "de")
+        self.assertEqual(inner.payment_strategy, "jp_de")
+        self.assertTrue(inner.all_no_proxy)
+        self.assertFalse(inner.fetch_ba_token)
+        self.assertEqual(inner.approve_pool_size, 30)
+        self.assertEqual(inner.approve_pool_max_attempts, 30)
+
+    def test_public_request_allows_us_profile_override(self) -> None:
+        req = app.PublicPayPalLinkRequest(
+            session="tok_page_defaults",
+            billingCountry="US",
+            paymentLocale="en",
+            paymentStrategy="jp_us",
+        )
+
+        inner = app.build_public_paypal_request(req)
+
+        self.assertEqual(inner.billing_country, "US")
+        self.assertEqual(inner.payment_locale, "en")
+        self.assertEqual(inner.payment_strategy, "jp_us")
+
 
 if __name__ == "__main__":
     unittest.main()

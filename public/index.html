@@ -2878,7 +2878,7 @@
             <div class="api-panel">
               <div>
                 <label style="margin-bottom: 4px">对外接口用法</label>
-                <p>外部程序调用 <code>/getPayPal_link</code> 即可复用当前 PP 提取主流程。默认只提取 <code>pm-redirects</code> 中转地址，不额外请求 PayPal BA 链；不传代理字段时全程直连。</p>
+                <p>外部程序调用 <code>/getPayPal_link</code> 即可复用当前 PP 提取主流程。默认使用页面同款 DE/EUR 画像，只提取 <code>pm-redirects</code> 中转地址；不传代理字段时全程直连。</p>
               </div>
               <div class="row">
                 <label>请求地址</label>
@@ -2904,7 +2904,9 @@
                 <code>curl --location --request POST 'https://pay.2333330.xyz/getPayPal_link' \
   --header 'Content-Type: application/json' \
   --data-raw '{
-    "accessToken": "eyJ..."
+    "session": {
+      "accessToken": "eyJ..."
+    }
   }'</code>
               </div>
               <div class="row">

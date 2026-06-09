@@ -20,6 +20,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from billing_pools import DE_BILLING_NAMES, DE_BILLING_STREETS, US_BILLING_NAMES, US_BILLING_STREETS
+
 try:
     from curl_cffi.requests import Session as CurlCffiSession  # type: ignore
 except ImportError:  # pragma: no cover - optional dependency
@@ -48,35 +50,8 @@ DEFAULT_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 )
 DEFAULT_STRIPE_RUNTIME_VERSION = "6f8494a281"
-US_BILLING_NAMES = [
-    ("James", "Smith"),
-    ("John", "Brown"),
-    ("Michael", "Johnson"),
-    ("Robert", "Miller"),
-    ("David", "Davis"),
-    ("William", "Wilson"),
-]
-US_BILLING_STREETS = [
-    ("3110 Sunset Boulevard", "Los Angeles", "CA", "90026"),
-    ("1200 Market Street", "San Francisco", "CA", "94102"),
-    ("500 Main Street", "Austin", "TX", "78701"),
-    ("88 Broadway", "New York", "NY", "10007"),
-    ("1200 Peachtree St", "Atlanta", "GA", "30309"),
-]
-DE_BILLING_NAMES = [
-    ("Lukas", "Müller"),
-    ("Anna", "Schmidt"),
-    ("Felix", "Weber"),
-    ("Sophie", "Fischer"),
-    ("Jonas", "Becker"),
-]
-DE_BILLING_STREETS = [
-    ("Friedrichstraße 123", "Berlin", "Berlin", "10117"),
-    ("Marienplatz 8", "München", "Bayern", "80331"),
-    ("Zeil 85", "Frankfurt", "Hessen", "60313"),
-    ("Neuer Wall 50", "Hamburg", "Hamburg", "20354"),
-    ("Königsallee 60", "Düsseldorf", "Nordrhein-Westfalen", "40212"),
-]
+LINK_GENERATION_TIMEOUT_SECONDS = 60
+LINK_GENERATION_TIMEOUT_GRACE_SECONDS = 8
 JAPAN_BILLING_NAMES = [
     ("Taro", "Yamada"),
     ("Hanako", "Sato"),
@@ -148,23 +123,7 @@ PAYMENT_STRATEGY_PROFILES: dict[str, dict[str, str]] = {
         "stripe_timezone": "Asia/Shanghai",
         "accept_language": "en-US,en;q=0.9",
     },
-    "de_eur": {
-        "billing_country": "DE",
-        "payment_locale": "de",
-        "checkout_region": "DE",
-        "provider_region": "DE",
-        "stripe_timezone": "Europe/Berlin",
-        "accept_language": "de-DE,de;q=0.9,en;q=0.8",
-    },
-    "de_billing_us_provider": {
-        "billing_country": "DE",
-        "payment_locale": "de",
-        "checkout_region": "DE",
-        "provider_region": "US",
-        "stripe_timezone": "Europe/Berlin",
-        "accept_language": "de-DE,de;q=0.9,en;q=0.8",
-    },
-    "jp_de_billing": {
+    "jp_de": {
         "billing_country": "DE",
         "payment_locale": "de",
         "checkout_region": "JP",
@@ -205,9 +164,13 @@ class LongLinkRequest(BaseModel):
     user_agent: str = ""
     max_retries: int = Field(5, alias="maxRetries")
     approve_retries: int = Field(10, alias="approveRetries")
-    approve_pool_size: int = Field(30, alias="approvePoolSize")
-    approve_pool_max_attempts: int = Field(600, alias="approvePoolMaxAttempts")
-    payment_strategy: str = Field("de_eur", alias="paymentStrategy")
+    approve_pool_size: int = Field(4, alias="approvePoolSize")
+    approve_pool_max_attempts: int = Field(30, alias="approvePoolMaxAttempts")
+    payment_strategy: str = Field("jp_us", alias="paymentStrategy")
+    approve_proxy: str = Field("", alias="approveProxy")
+    approve_proxy_region: str = Field("JP", alias="approveProxyRegion")
+    fetch_ba_token: bool = Field(False, alias="fetchBaToken")
+    all_no_proxy: bool = Field(False, alias="allNoProxy")
     stripe_timezone: str = Field("", alias="stripeTimezone")
     task_id: str = Field("", alias="taskId")
 
@@ -232,6 +195,7 @@ class LongLinkResponse(BaseModel):
     payment_method_id: str
     stripe_redirect_url: str
     provider_redirect_url: str
+    pm_redirect_url: str = ""
     fallback: bool = False
     provider_error: str = ""
     stripe_hosted_url: str
@@ -451,7 +415,11 @@ def set_proxy_url(session: Any, proxy: str) -> None:
 
 
 def set_proxy(session: Any, proxy: str) -> None:
-    set_proxy_url(session, effective_default_proxy(proxy))
+    normalized = normalize_proxy_url(str(proxy or "").strip())
+    if normalized:
+        set_proxy_url(session, normalized)
+    else:
+        session.proxies = {}
 
 
 def proxy_for_region(proxy: str, region: str) -> str:
@@ -462,7 +430,13 @@ def proxy_for_region(proxy: str, region: str) -> str:
     return proxy
 
 
+def direct_mode_enabled(req: Any) -> bool:
+    return bool(getattr(req, "all_no_proxy", False))
+
+
 def checkout_stage_proxy(req: Any) -> str:
+    if direct_mode_enabled(req):
+        return ""
     return effective_default_proxy(
         getattr(req, "checkout_proxy", "")
         or getattr(req, "proxy_input", "")
@@ -472,6 +446,8 @@ def checkout_stage_proxy(req: Any) -> str:
 
 
 def provider_stage_proxy(req: Any) -> str:
+    if direct_mode_enabled(req):
+        return ""
     explicit = str(getattr(req, "provider_proxy", "") or "").strip()
     if explicit:
         return normalize_proxy_url(explicit)
@@ -604,7 +580,7 @@ def normalize_approve_pool_size(value: Any) -> int:
     try:
         parsed = int(value)
     except Exception:
-        return 50
+        return 4
     return max(1, min(parsed, 100))
 
 
@@ -612,8 +588,20 @@ def normalize_approve_pool_max_attempts(value: Any) -> int:
     try:
         parsed = int(value)
     except Exception:
-        return 3000
+        return 30
     return max(1, min(parsed, 5000))
+
+
+APPROVE_ESCALATION_TIERS: tuple[int, ...] = (1, 2, 4, 8, 16, 30)
+
+
+def approve_escalation_max_attempts(pool_size: int, req: LongLinkRequest | None = None) -> int:
+    _ = pool_size, req
+    return 1
+
+
+def approve_escalation_wave_attempts(pool_size: int) -> int:
+    return max(1, int(pool_size or 1))
 
 
 def normalize_payment_strategy(value: Any) -> str:
@@ -623,15 +611,23 @@ def normalize_payment_strategy(value: Any) -> str:
         "jp": "jp_us",
         "jp_us": "jp_us",
         "jpus": "jp_us",
-        "de": "de_eur",
-        "de_eur": "de_eur",
-        "deeur": "de_eur",
-        "de_us": "de_billing_us_provider",
-        "de_billing_us_provider": "de_billing_us_provider",
-        "jp_de": "jp_de_billing",
-        "jp_de_billing": "jp_de_billing",
+        "de": "jp_de",
+        "de_eur": "jp_de",
+        "deeur": "jp_de",
+        "jp_de": "jp_de",
+        "jp_de_billing": "jp_de",
+        "de_billing_us_provider": "jp_de",
     }
-    return aliases.get(strategy, strategy if strategy in PAYMENT_STRATEGY_PROFILES else "de_eur")
+    return aliases.get(strategy, strategy if strategy in PAYMENT_STRATEGY_PROFILES else "jp_us")
+
+
+def paypal_strategy_for_billing(billing_country: str) -> str:
+    return "jp_de" if normalize_country(billing_country) == "DE" else "jp_us"
+
+
+def normalize_approve_proxy_region(value: Any) -> str:
+    region = str(value or "JP").strip().upper()
+    return region if region in {"JP", "US", "DE"} else "JP"
 
 
 def stripe_timezone_for_req(req: LongLinkRequest) -> str:
@@ -659,28 +655,84 @@ def strategy_proxy_base(req: LongLinkRequest) -> str:
 
 
 def apply_payment_strategy(req: LongLinkRequest) -> LongLinkRequest:
+    if direct_mode_enabled(req):
+        return req.model_copy(
+            update={
+                "proxy": "",
+                "checkout_proxy": "",
+                "provider_proxy": "",
+                "approve_proxy": "",
+            }
+        )
     if normalize_link_type(req.link_type) != "paypal":
         return req
-    strategy = normalize_payment_strategy(req.payment_strategy)
-    profile = PAYMENT_STRATEGY_PROFILES.get(strategy)
-    if not profile:
-        return req
+    billing = normalize_country(req.billing_country or "US")
+    if billing not in {"US", "DE"}:
+        billing = "US"
+    strategy = normalize_payment_strategy(req.payment_strategy or paypal_strategy_for_billing(billing))
+    if billing == "DE":
+        strategy = "jp_de"
+    elif billing == "US":
+        strategy = "jp_us"
+    profile = PAYMENT_STRATEGY_PROFILES.get(strategy) or PAYMENT_STRATEGY_PROFILES["jp_us"]
     region_base = strategy_proxy_base(req)
     if "region-" not in region_base:
         region_base = DEFAULT_PROXY
+    approve_region = normalize_approve_proxy_region(req.approve_proxy_region)
     updates: dict[str, Any] = {
-        "billing_country": profile["billing_country"],
+        "billing_country": billing,
         "payment_locale": profile["payment_locale"],
         "stripe_timezone": profile["stripe_timezone"],
         "payment_strategy": strategy,
+        "approve_proxy_region": approve_region,
     }
     explicit_checkout = str(getattr(req, "checkout_proxy", "") or "").strip()
     explicit_provider = str(getattr(req, "provider_proxy", "") or "").strip()
-    if not (explicit_checkout and explicit_provider):
-        updates["checkout_proxy"] = proxy_for_region(region_base, profile["checkout_region"])
-        updates["provider_proxy"] = proxy_for_region(region_base, profile["provider_region"])
-        updates["proxy"] = proxy_for_region(region_base, profile["checkout_region"])
+    explicit_approve = str(getattr(req, "approve_proxy", "") or "").strip()
+    updates["checkout_proxy"] = (
+        explicit_checkout if explicit_checkout else proxy_for_region(region_base, "JP")
+    )
+    updates["provider_proxy"] = (
+        explicit_provider if explicit_provider else proxy_for_region(region_base, profile["provider_region"])
+    )
+    updates["approve_proxy"] = (
+        explicit_approve if explicit_approve else proxy_for_region(region_base, approve_region)
+    )
+    updates["proxy"] = updates["checkout_proxy"]
     return req.model_copy(update=updates)
+
+
+def approve_stage_proxy(req: Any) -> str:
+    if direct_mode_enabled(req):
+        return ""
+    explicit = str(getattr(req, "approve_proxy", "") or "").strip()
+    if explicit:
+        return normalize_proxy_url(explicit)
+    region_base = strategy_proxy_base(req)
+    if "region-" not in region_base:
+        region_base = DEFAULT_PROXY
+    return proxy_for_region(region_base, normalize_approve_proxy_region(getattr(req, "approve_proxy_region", "JP")))
+
+
+def ensure_link_generation_deadline(deadline: float) -> None:
+    if time.time() > deadline + LINK_GENERATION_TIMEOUT_GRACE_SECONDS:
+        raise HTTPException(
+            status_code=504,
+            detail=f"link generation timeout after {LINK_GENERATION_TIMEOUT_SECONDS}s",
+        )
+
+
+def remaining_link_seconds(link_deadline: float | None) -> float | None:
+    if link_deadline is None:
+        return None
+    return max(0.0, float(link_deadline) - time.time())
+
+
+def bounded_link_timeout(default_seconds: float, link_deadline: float | None) -> float:
+    remaining = remaining_link_seconds(link_deadline)
+    if remaining is None:
+        return max(1.0, float(default_seconds or 1))
+    return max(1.0, min(float(default_seconds or 1), remaining))
 
 
 def extract_session_email(raw_token: str) -> str:
@@ -764,7 +816,11 @@ def build_chatgpt_session(req: LongLinkRequest) -> Any:
 def create_checkout(req: LongLinkRequest, chatgpt_session: Any | None = None) -> dict[str, Any]:
     billing_country = effective_country(req)
     currency = currency_for_country(billing_country)
-    checkout_ui_mode = (req.checkout_ui_mode or "hosted").strip() or "hosted"
+    link_type = normalize_link_type(req.link_type)
+    if link_type in {"paypal", "gopay"}:
+        checkout_ui_mode = "custom"
+    else:
+        checkout_ui_mode = (req.checkout_ui_mode or "hosted").strip() or "hosted"
     body = {
         "entry_point": "all_plans_pricing_modal",
         "plan_name": "chatgptplusplan",
@@ -809,12 +865,27 @@ def create_checkout(req: LongLinkRequest, chatgpt_session: Any | None = None) ->
     cs_id = data.get("checkout_session_id") or data.get("session_id") or data.get("id")
     if not cs_id or not str(cs_id).startswith("cs_"):
         raise HTTPException(status_code=502, detail=f"checkout response missing cs_id: {data}")
+    checkout_url = str(data.get("url") or "").strip()
     return {
         "cs_id": str(cs_id),
         "processor_entity": extract_processor_entity(data),
         "billing_country": billing_country,
         "currency": currency,
+        "checkout_url": checkout_url,
+        "requires_manual_approval": bool(data.get("requires_manual_approval")),
+        "publishable_key": str(data.get("publishable_key") or "").strip(),
+        "client_secret": str(data.get("client_secret") or "").strip(),
+        "checkout_ui_mode": str(data.get("checkout_ui_mode") or checkout_ui_mode).strip(),
     }
+
+
+def stripe_publishable_key_for(checkout: dict[str, Any] | None, req: LongLinkRequest) -> str:
+    checkout = checkout or {}
+    return (
+        str(checkout.get("publishable_key") or "").strip()
+        or req.stripe_publishable_key.strip()
+        or DEFAULT_STRIPE_PK
+    )
 
 
 def stripe_init(
@@ -822,8 +893,10 @@ def stripe_init(
     req: LongLinkRequest,
     proxy_override: str = "",
     stripe_session: Any | None = None,
+    checkout: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    stripe_pk = req.stripe_publishable_key.strip() or DEFAULT_STRIPE_PK
+    checkout = checkout or {}
+    stripe_pk = stripe_publishable_key_for(checkout, req)
     browser_locale, elements_locale = locale_parts(req.payment_locale)
     stripe_js_id = str(uuid.uuid4())
     stripe = stripe_session or new_session()
@@ -991,6 +1064,18 @@ def stripe_context(cs_id: str, init_payload: dict[str, Any], req: LongLinkReques
     }
 
 
+def billing_log_snapshot(billing: dict[str, str]) -> dict[str, str]:
+    return {
+        "billing_name": str(billing.get("name") or "").strip(),
+        "billing_email": str(billing.get("email") or "").strip(),
+        "billing_country": str(billing.get("country") or "").strip(),
+        "billing_line1": str(billing.get("line1") or "").strip(),
+        "billing_city": str(billing.get("city") or "").strip(),
+        "billing_state": str(billing.get("state") or "").strip(),
+        "billing_postal_code": str(billing.get("postal_code") or "").strip(),
+    }
+
+
 def billing_for_link_type(link_type: str, country: str = "US") -> dict[str, str]:
     normalized = normalize_link_type(link_type)
     billing_country = normalize_country(country or "US")
@@ -1005,7 +1090,7 @@ def billing_for_link_type(link_type: str, country: str = "US") -> dict[str, str]
             first_name, last_name = random.choice(US_BILLING_NAMES)
             line1, city, state, postal_code = random.choice(US_BILLING_STREETS)
         suffix = random.randint(1000, 9999)
-        email_local = f"{first_name.lower()}.{last_name.lower()}{suffix}".replace("ü", "u").replace("ö", "o").replace("ä", "a")
+        email_local = f"{first_name.lower()}.{last_name.lower()}{suffix}"
         return {
             "name": f"{first_name} {last_name}",
             "email": f"{email_local}@example.com",
@@ -1211,6 +1296,13 @@ def stripe_confirm(
 def extract_redirect_to_url(payload: Any) -> str:
     if not isinstance(payload, dict):
         return ""
+    direct_url = str(payload.get("url") or "").strip()
+    if direct_url.startswith("http") and (
+        "paypal.com/agreements/approve" in direct_url
+        or "pm-redirects.stripe.com" in direct_url
+        or "hooks.stripe.com" in direct_url
+    ):
+        return direct_url
     next_action = payload.get("next_action")
     if isinstance(next_action, dict) and next_action.get("type") == "redirect_to_url":
         redirect_to_url = next_action.get("redirect_to_url") or {}
@@ -1249,12 +1341,61 @@ def extract_nested_redirect_urls(payload: Any, preferred_hosts: tuple[str, ...] 
     return found
 
 
-def stripe_poll_proxy_candidates(checkout_proxy: str = "", provider_proxy: str = "") -> list[tuple[str, str]]:
+def pm_redirect_snapshot(url: str) -> str:
+    current = str(url or "").strip()
+    if "pm-redirects.stripe.com" in current.lower():
+        return current
+    return ""
+
+
+def resolve_pm_redirect_follow(
+    stripe: Any,
+    redirect_url: str,
+    preferred_hosts: tuple[str, ...] = (),
+    hop_timeout: float | None = None,
+) -> str:
+    """模拟浏览器：对 pm-redirects 链一次性跟随重定向，直达 PayPal BA。"""
+    current = pm_redirect_snapshot(redirect_url)
+    if not current:
+        return ""
+    preferred = _preferred_hosts(preferred_hosts)
+    request_timeout = max(3.0, float(hop_timeout or DEFAULT_TIMEOUT))
+    try:
+        response = stripe.get(current, allow_redirects=True, timeout=request_timeout)
+    except Exception:
+        return ""
+    final_url = str(getattr(response, "url", "") or "").strip()
+    if is_paypal_ba_url(final_url) or url_matches_hosts(final_url, preferred):
+        return final_url
+    body_text = str(getattr(response, "text", "") or "")
+    for candidate in extract_external_url_candidates(body_text, preferred):
+        if is_paypal_ba_url(candidate) or url_matches_hosts(candidate, preferred):
+            return candidate
+    return final_url
+
+
+def redirect_flow_result(
+    final_url: str,
+    approve_result: str,
+    *,
+    intermediate: str = "",
+    source_url: str = "",
+) -> tuple[str, str, str]:
+    pm_url = pm_redirect_snapshot(intermediate) or pm_redirect_snapshot(source_url)
+    return str(final_url or "").strip(), str(approve_result or "").strip(), pm_url
+
+
+def stripe_poll_proxy_candidates(
+    checkout_proxy: str = "",
+    provider_proxy: str = "",
+    approve_proxy: str = "",
+) -> list[tuple[str, str]]:
     candidates: list[tuple[str, str]] = []
     seen: set[str] = set()
     for label, proxy in (
-        ("checkout", checkout_proxy),
         ("provider", provider_proxy),
+        ("approve", approve_proxy),
+        ("checkout", checkout_proxy),
     ):
         normalized = str(proxy or "").strip()
         if not normalized or normalized in seen:
@@ -1264,6 +1405,93 @@ def stripe_poll_proxy_candidates(checkout_proxy: str = "", provider_proxy: str =
     if not candidates:
         candidates.append(("direct", ""))
     return candidates
+
+
+def resolve_external_redirect_with_proxy_pool(
+    stripe: Any,
+    redirect_url: str,
+    preferred_hosts: tuple[str, ...],
+    proxies: list[str],
+    progress: ProgressLogger = noop_progress,
+    link_deadline: float | None = None,
+    hop_timeout: float | None = None,
+    req: LongLinkRequest | None = None,
+) -> tuple[str, bool, int]:
+    current = str(redirect_url or "").strip()
+    if not current:
+        return "", False, 0
+    if req is not None and not fetch_ba_token_enabled(req):
+        stop_pm = pm_redirect_stop_url(req, current)
+        if stop_pm:
+            return stop_pm, False, 0
+    if url_matches_hosts(current, preferred_hosts) or is_paypal_ba_url(current):
+        return current, False, 0
+    normalized_pool = []
+    seen: set[str] = set()
+    for proxy in proxies:
+        candidate = str(proxy or "").strip()
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        normalized_pool.append(candidate)
+    if not normalized_pool:
+        normalized_pool.append("")
+    if pm_redirect_snapshot(current):
+        deduped_pool: list[str] = []
+        seen_pool: set[str] = set()
+        for candidate in ["", *normalized_pool]:
+            if candidate in seen_pool:
+                continue
+            seen_pool.add(candidate)
+            deduped_pool.append(candidate)
+        normalized_pool = deduped_pool
+    per_hop_timeout = hop_timeout
+    if per_hop_timeout is None and link_deadline is not None:
+        per_hop_timeout = bounded_link_timeout(8, link_deadline)
+    for attempt, proxy in enumerate(normalized_pool, start=1):
+        if link_deadline is not None:
+            ensure_link_generation_deadline(link_deadline)
+        session = clone_http_session(stripe)
+        apply_poll_proxy(session, proxy)
+        resolved = resolve_external_redirect(
+            session,
+            current,
+            preferred_hosts=preferred_hosts,
+            max_hops=6,
+            hop_timeout=per_hop_timeout,
+        )
+        if resolved and (url_matches_hosts(resolved, preferred_hosts) or is_paypal_ba_url(resolved)):
+            if link_deadline is None or remaining_link_seconds(link_deadline) > 0.5:
+                via_browser_follow = bool(pm_redirect_snapshot(current) and is_paypal_ba_url(resolved))
+                progress(
+                    "provider_redirect",
+                    (
+                        f"provider {'直连' if not proxy else f'代理池第 {attempt}/{len(normalized_pool)} 路'}"
+                        f"{'（pm-redirects 浏览器式跟随）' if via_browser_follow else ''}"
+                        f"解析到 provider redirect。"
+                    ),
+                    {
+                        "provider_proxy_pool_used": len(normalized_pool) > 1 or attempt > 1,
+                        "provider_proxy_attempts": attempt,
+                        "poll_proxy": "direct" if not proxy else safe_proxy_hint(proxy),
+                        "resolve_via_direct": not bool(proxy),
+                        "resolve_via_browser_follow": via_browser_follow,
+                        "pm_redirect_url": pm_redirect_snapshot(current),
+                        "provider_redirect_url": resolved,
+                    },
+                )
+            return resolved, len(normalized_pool) > 1 or attempt > 1, attempt
+    return (
+        resolve_external_redirect(
+            stripe,
+            current,
+            preferred_hosts=preferred_hosts,
+            max_hops=6,
+            hop_timeout=per_hop_timeout,
+        ),
+        bool(normalized_pool),
+        len(normalized_pool),
+    )
 
 
 def apply_poll_proxy(stripe: Any, proxy: str) -> None:
@@ -1392,6 +1620,7 @@ def post_approve_redirect_recovery(
     hosted_long_url: str = "",
     checkout_proxy: str = "",
     provider_proxy: str = "",
+    approve_proxy: str = "",
     timeout_seconds: float = 45,
     progress: ProgressLogger = noop_progress,
     confirm_payload: dict[str, Any] | None = None,
@@ -1401,9 +1630,11 @@ def post_approve_redirect_recovery(
     checkout: dict[str, Any] | None = None,
     stripe_hosted_url: str = "",
 ) -> str:
+    if not fetch_ba_token_enabled(req):
+        return ""
     preferred_hosts = ("paypal.com", "pm-redirects.stripe.com")
     deadline = time.time() + max(12.0, float(timeout_seconds or 45))
-    proxies = stripe_poll_proxy_candidates(checkout_proxy, provider_proxy)
+    proxies = stripe_poll_proxy_candidates(checkout_proxy, provider_proxy, approve_proxy)
     attempt = 0
     if pm_id and init_payload is not None and checkout is not None:
         for label, proxy in proxies:
@@ -1466,7 +1697,87 @@ def post_approve_redirect_recovery(
                 f"approve 已通过，继续双代理恢复轮询，第 {attempt} 轮。",
                 {"attempt": attempt, "proxies": [safe_proxy_hint(proxy) for _, proxy in proxies if proxy]},
             )
-        time.sleep(0.45 if attempt < 30 else 0.9)
+        time.sleep(0.15 if attempt < 20 else 0.25)
+    return ""
+
+
+def poll_payment_page_provider_url_fast(
+    stripe: Any,
+    cs_id: str,
+    stripe_pk: str,
+    req: LongLinkRequest,
+    ctx: dict[str, Any] | None = None,
+    *,
+    timeout_seconds: float = 10,
+    progress: ProgressLogger = noop_progress,
+    link_deadline: float | None = None,
+    ba_only: bool = False,
+) -> str:
+    if not fetch_ba_token_enabled(req):
+        redirect_url = stripe_payment_page_redirect_url_once(
+            stripe,
+            cs_id,
+            stripe_pk,
+            req,
+            ctx=ctx,
+            raise_on_terminal=False,
+        )
+        stop_pm = pm_redirect_stop_url(req, redirect_url)
+        if stop_pm:
+            progress(
+                "redirect_poll",
+                "未开启 BA Token：单次探测命中 Stripe 中转地址，跳过后续轮询。",
+                {"redirect_url": stop_pm},
+            )
+            return stop_pm
+        if is_paypal_ba_url(redirect_url):
+            return redirect_url
+        if (
+            not ba_only
+            and redirect_url
+            and is_actionable_stripe_redirect(redirect_url, ("paypal.com", "pm-redirects.stripe.com"))
+        ):
+            return redirect_url
+        return ""
+    deadline = time.time() + bounded_link_timeout(timeout_seconds, link_deadline)
+    attempt = 0
+    while time.time() < deadline:
+        if link_deadline is not None:
+            ensure_link_generation_deadline(link_deadline)
+        attempt += 1
+        redirect_url = stripe_payment_page_redirect_url_once(
+            stripe,
+            cs_id,
+            stripe_pk,
+            req,
+            ctx=ctx,
+            raise_on_terminal=False,
+        )
+        if is_paypal_ba_url(redirect_url):
+            progress(
+                "redirect_poll",
+                f"快速轮询 Stripe payment page 命中 PayPal BA（第 {attempt} 次）。",
+                {"attempt": attempt, "long_url": redirect_url},
+            )
+            return redirect_url
+        if (
+            not ba_only
+            and redirect_url
+            and is_actionable_stripe_redirect(redirect_url, ("paypal.com", "pm-redirects.stripe.com"))
+        ):
+            progress(
+                "redirect_poll",
+                f"快速轮询 Stripe payment page 下一跳（第 {attempt} 次）。",
+                {"attempt": attempt, "redirect_url": redirect_url},
+            )
+            return redirect_url
+        if attempt == 1 or attempt % 8 == 0:
+            progress(
+                "redirect_poll",
+                f"轮询 Stripe payment page 下一跳（第 {attempt} 次）。",
+                {"attempt": attempt},
+            )
+        time.sleep(0.22)
     return ""
 
 
@@ -1681,16 +1992,32 @@ def redirect_url_after_confirm(
     return stripe_payment_page_redirect_url(stripe, cs_id, stripe_pk, req, timeout_seconds=30)
 
 
-def resolve_external_redirect(stripe: Any, redirect_url: str, preferred_hosts: tuple[str, ...] = (), max_hops: int = 5) -> str:
+def resolve_external_redirect(
+    stripe: Any,
+    redirect_url: str,
+    preferred_hosts: tuple[str, ...] = (),
+    max_hops: int = 5,
+    hop_timeout: float | None = None,
+) -> str:
     current = str(redirect_url or "").strip()
     preferred = _preferred_hosts(preferred_hosts)
+    request_timeout = max(3.0, float(hop_timeout or DEFAULT_TIMEOUT))
+    if pm_redirect_snapshot(current):
+        followed = resolve_pm_redirect_follow(
+            stripe,
+            current,
+            preferred_hosts=preferred,
+            hop_timeout=request_timeout,
+        )
+        if followed and (is_paypal_ba_url(followed) or url_matches_hosts(followed, preferred)):
+            return followed
     for _ in range(max(1, int(max_hops or 1))):
         if not current:
             return ""
-        if url_matches_hosts(current, preferred):
+        if url_matches_hosts(current, preferred) or is_paypal_ba_url(current):
             return current
         try:
-            response = stripe.get(current, allow_redirects=False, timeout=DEFAULT_TIMEOUT)
+            response = stripe.get(current, allow_redirects=False, timeout=request_timeout)
         except Exception:
             return current
         resolved_url = str(getattr(response, "url", "") or current).strip()
@@ -1711,51 +2038,6 @@ def resolve_external_redirect(stripe: Any, redirect_url: str, preferred_hosts: t
         else:
             return resolved_url or current
     return current
-
-
-def create_provider_link(
-    chatgpt: Any,
-    checkout: dict[str, Any],
-    init_payload: dict[str, Any],
-    stripe_hosted_url: str,
-    req: LongLinkRequest,
-    provider_proxy: str = "",
-) -> dict[str, str]:
-    link_type = normalize_link_type(req.link_type)
-    stripe_pk = req.stripe_publishable_key.strip() or DEFAULT_STRIPE_PK
-    stripe = build_stripe_session(req, proxy_override=provider_proxy)
-    ctx = stripe_context(checkout["cs_id"], init_payload, req)
-    billing = billing_for_link_type(link_type)
-    pm_id = stripe_create_payment_method(stripe, checkout["cs_id"], stripe_pk, billing, link_type, ctx)
-    confirm_payload = stripe_confirm(
-        stripe,
-        checkout["cs_id"],
-        pm_id,
-        stripe_pk,
-        link_type,
-        init_payload,
-        ctx,
-        checkout,
-        req,
-        stripe_hosted_url,
-    )
-    stripe_redirect_url = redirect_url_after_confirm(
-        chatgpt,
-        stripe,
-        confirm_payload,
-        checkout["cs_id"],
-        stripe_pk,
-        checkout,
-        req,
-    )
-    preferred_hosts = ("paypal.com",) if link_type == "paypal" else ()
-    provider_url = resolve_external_redirect(stripe, stripe_redirect_url, preferred_hosts=preferred_hosts)
-    return {
-        "payment_method_id": pm_id,
-        "stripe_redirect_url": stripe_redirect_url,
-        "provider_redirect_url": provider_url,
-        "long_url": provider_url or stripe_redirect_url,
-    }
 
 
 class TaskCancelled(RuntimeError):
@@ -1989,6 +2271,11 @@ def response_from_parts(
         payment_method_id=provider["payment_method_id"],
         stripe_redirect_url=provider["stripe_redirect_url"],
         provider_redirect_url=provider["provider_redirect_url"],
+        pm_redirect_url=str(
+            provider.get("pm_redirect_url")
+            or pm_redirect_snapshot(provider.get("stripe_redirect_url", ""))
+            or ""
+        ),
         fallback=fallback,
         provider_error=provider_error,
         stripe_hosted_url=stripe_hosted_url,
@@ -2008,17 +2295,22 @@ def build_public_paypal_request(req: PublicPayPalLinkRequest) -> LongLinkRequest
         proxy=req.proxy,
         checkoutProxy=req.checkout_proxy,
         providerProxy=req.provider_proxy,
+        approveProxyRegion=getattr(req, "approve_proxy_region", "JP") or "JP",
         maxRetries=req.max_retries,
         approveRetries=req.approve_retries,
     )
 
 
 def build_public_paypal_success(result: LongLinkResponse) -> PublicPayPalLinkResponse:
+    ba_link = result.long_url if is_paypal_ba_url(result.long_url) else ""
+    pm_link = result.pm_redirect_url or (result.long_url if is_pm_redirect_url(result.long_url) else "")
+    primary_link = ba_link or pm_link
+    success = bool(primary_link)
     return PublicPayPalLinkResponse(
-        success=bool(result.long_url and "paypal.com/agreements/approve" in result.long_url),
-        code="SUCCESS" if result.long_url and "paypal.com/agreements/approve" in result.long_url else "PAYPAL_LINK_NOT_FOUND",
-        message="ok" if result.long_url and "paypal.com/agreements/approve" in result.long_url else "not found",
-        paypal_link=result.long_url if "paypal.com/agreements/approve" in result.long_url else "",
+        success=success,
+        code="SUCCESS" if success else "PAYPAL_LINK_NOT_FOUND",
+        message="ok" if success else "not found",
+        paypal_link=primary_link,
         hosted_long_url=result.long_url if result.fallback else "",
         attempt_count=result.attempt_count,
         max_attempts=result.max_attempts,
@@ -2321,54 +2613,6 @@ def redirect_url_after_confirm(
     return stripe_payment_page_redirect_url(stripe, cs_id, stripe_pk, req, ctx=ctx, timeout_seconds=30, progress=progress)
 
 
-def create_provider_link(
-    chatgpt: Any,
-    checkout: dict[str, Any],
-    init_payload: dict[str, Any],
-    stripe_hosted_url: str,
-    req: LongLinkRequest,
-    provider_proxy: str = "",
-    stripe_session: Any | None = None,
-    progress: ProgressLogger = noop_progress,
-) -> dict[str, str]:
-    link_type = normalize_link_type(req.link_type)
-    stripe_pk = req.stripe_publishable_key.strip() or DEFAULT_STRIPE_PK
-    stripe = stripe_session or build_stripe_session(req, proxy_override=provider_proxy)
-    ctx = stripe_context(checkout["cs_id"], init_payload, req)
-    hosted_long_url = to_openai_pay_url(stripe_hosted_url) or stripe_hosted_url
-    billing = billing_for_link_type(link_type)
-    pm_id = stripe_create_payment_method(stripe, checkout["cs_id"], stripe_pk, billing, link_type, ctx)
-    confirm_payload = stripe_confirm(stripe, checkout["cs_id"], pm_id, stripe_pk, link_type, init_payload, ctx, checkout, req, stripe_hosted_url)
-    preferred_hosts = ("paypal.com",) if link_type == "paypal" else ()
-    try:
-        stripe_redirect_url = redirect_url_after_confirm(chatgpt, stripe, confirm_payload, checkout["cs_id"], stripe_pk, checkout, req, ctx=ctx, progress=progress)
-    except HTTPException as exc:
-        if not is_stripe_terminal_error_detail(exc.detail) and hosted_long_url:
-            progress("provider_recover", "Stripe poll 未拿到 redirect，尝试从 hosted 页面提取 provider 链接。", {"error": str(exc.detail)})
-            provider_url = resolve_external_redirect(stripe, hosted_long_url, preferred_hosts=preferred_hosts)
-            if not preferred_hosts or url_matches_hosts(provider_url, preferred_hosts):
-                progress("provider_recover", "已从 hosted 页面提取到 provider 链接。", {"provider_redirect_url": provider_url})
-                return {
-                    "payment_method_id": pm_id,
-                    "stripe_redirect_url": "",
-                    "provider_redirect_url": provider_url,
-                    "long_url": provider_url,
-                }
-        raise
-    provider_url = resolve_external_redirect(stripe, stripe_redirect_url, preferred_hosts=preferred_hosts)
-    if preferred_hosts and not url_matches_hosts(provider_url, preferred_hosts) and hosted_long_url:
-        hosted_provider_url = resolve_external_redirect(stripe, hosted_long_url, preferred_hosts=preferred_hosts)
-        if url_matches_hosts(hosted_provider_url, preferred_hosts):
-            progress("provider_recover", "Stripe redirect 未直接落到 PayPal，已从 hosted 页面补提 provider 链接。", {"provider_redirect_url": hosted_provider_url})
-            provider_url = hosted_provider_url
-    return {
-        "payment_method_id": pm_id,
-        "stripe_redirect_url": stripe_redirect_url,
-        "provider_redirect_url": provider_url,
-        "long_url": provider_url or stripe_redirect_url,
-    }
-
-
 def stripe_payment_page_redirect_url_once(
     stripe: Any,
     cs_id: str,
@@ -2417,6 +2661,30 @@ def stripe_payment_page_redirect_url(
     progress: ProgressLogger = noop_progress,
     raise_on_terminal: bool = True,
 ) -> str:
+    if not fetch_ba_token_enabled(req):
+        progress("redirect_poll", "未开启 BA Token：单次探测 Stripe 跳转地址，跳过轮询。")
+        redirect_url = stripe_payment_page_redirect_url_once(
+            stripe,
+            cs_id,
+            stripe_pk,
+            req,
+            ctx=ctx,
+            raise_on_terminal=raise_on_terminal,
+        )
+        if redirect_url:
+            stop_pm = pm_redirect_stop_url(req, redirect_url)
+            if stop_pm:
+                progress(
+                    "redirect_poll",
+                    "单次探测命中 Stripe 中转地址，按配置停止后续轮询。",
+                    {"redirect_url": stop_pm},
+                )
+                return stop_pm
+            progress("redirect_poll", "已从 Stripe payment page 解析到跳转地址。")
+            return redirect_url
+        if raise_on_terminal:
+            raise HTTPException(status_code=504, detail="redirect url resolution timeout: single probe missed")
+        return ""
     deadline = time.time() + max(1.0, float(timeout_seconds or 30))
     last_err = ""
     params = stripe_payment_page_params(stripe_pk, req, ctx)
@@ -2455,7 +2723,7 @@ def stripe_payment_page_redirect_url(
                     last_err = f"keys=[{','.join(sorted(payload.keys())[:8])}]"
         else:
             last_err = f"http {response.status_code}: {response.text[:120]}"
-        time.sleep(1)
+        time.sleep(0.28)
     raise HTTPException(status_code=504, detail=f"redirect url resolution timeout: {last_err}")
 
 
@@ -2485,6 +2753,116 @@ def chatgpt_approve_once(chatgpt: Any, cs_id: str, checkout: dict[str, Any]) -> 
     if result:
         return result, ""
     return "", f"result={result!r} body={body_text[:300]}"
+
+
+def probe_redirect_after_approve(
+    stripe: Any,
+    cs_id: str,
+    stripe_pk: str,
+    req: LongLinkRequest,
+    ctx: dict[str, Any] | None = None,
+    hosted_long_url: str = "",
+    provider_proxy: str = "",
+    approve_proxy: str = "",
+    checkout_proxy: str = "",
+    *,
+    deep_scan: bool = False,
+) -> str:
+    if stripe is None:
+        return ""
+    poll_clone = clone_http_session(stripe)
+    apply_poll_proxy(poll_clone, provider_proxy or approve_proxy or checkout_proxy)
+    return probe_stripe_redirect_sources(
+        poll_clone,
+        cs_id,
+        stripe_pk,
+        req,
+        ctx=ctx,
+        hosted_long_url=hosted_long_url,
+        preferred_hosts=("paypal.com", "pm-redirects.stripe.com"),
+        deep_scan=deep_scan,
+    )
+
+
+def chatgpt_approve_once_with_parallel_probe(
+    chatgpt: Any,
+    cs_id: str,
+    checkout: dict[str, Any],
+    *,
+    stripe: Any | None = None,
+    stripe_pk: str = "",
+    req: LongLinkRequest | None = None,
+    ctx: dict[str, Any] | None = None,
+    hosted_long_url: str = "",
+    provider_proxy: str = "",
+    approve_proxy: str = "",
+    checkout_proxy: str = "",
+    deep_scan: bool = False,
+    progress: ProgressLogger = noop_progress,
+    link_deadline: float | None = None,
+) -> tuple[str, str, str]:
+    poll_req = req or LongLinkRequest(accessToken="unused")
+    probe_state: dict[str, str] = {"redirect_url": ""}
+    probe_thread: threading.Thread | None = None
+
+    def probe_worker() -> None:
+        try:
+            probe_state["redirect_url"] = probe_redirect_after_approve(
+                stripe,
+                cs_id,
+                stripe_pk,
+                poll_req,
+                ctx=ctx,
+                hosted_long_url=hosted_long_url,
+                provider_proxy=provider_proxy,
+                approve_proxy=approve_proxy,
+                checkout_proxy=checkout_proxy,
+                deep_scan=deep_scan,
+            )
+        except Exception:
+            probe_state["redirect_url"] = ""
+
+    if stripe is not None:
+        progress(
+            "chatgpt_approve",
+            "approve 与 Stripe redirect 轮询并行进行中…",
+            {"cs_id": cs_id, "parallel_probe": True},
+        )
+        probe_thread = threading.Thread(target=probe_worker, name="approve-probe", daemon=True)
+        probe_thread.start()
+    else:
+        progress("chatgpt_approve", "正在等待 ChatGPT approve 响应…", {"cs_id": cs_id})
+
+    result, error_text = chatgpt_approve_once(chatgpt, cs_id, checkout)
+
+    redirect_url = ""
+    if probe_thread is not None and result == "approved":
+        probe_thread.join(timeout=bounded_link_timeout(3, link_deadline))
+        redirect_url = str(probe_state.get("redirect_url") or "")
+        if not redirect_url:
+            redirect_url = probe_redirect_after_approve(
+                stripe,
+                cs_id,
+                stripe_pk,
+                poll_req,
+                ctx=ctx,
+                hosted_long_url=hosted_long_url,
+                provider_proxy=provider_proxy,
+                approve_proxy=approve_proxy,
+                checkout_proxy=checkout_proxy,
+                deep_scan=deep_scan,
+            )
+    return result, error_text, redirect_url
+
+
+def effective_approve_result(state_result: str, attempt_result: str) -> str:
+    current = str(state_result or "").strip()
+    attempt = str(attempt_result or "").strip()
+    if current == "approved":
+        return "approved"
+    if attempt == "approved":
+        return "approved"
+    return attempt or current or "unknown"
 
 
 def probe_stripe_redirect_sources(
@@ -2526,6 +2904,7 @@ def chatgpt_approve_concurrent_pool(
     hosted_long_url: str = "",
     checkout_proxy: str = "",
     provider_proxy: str = "",
+    approve_proxy: str = "",
     confirm_payload: dict[str, Any] | None = None,
     pm_id: str = "",
     link_type: str = "paypal",
@@ -2533,13 +2912,22 @@ def chatgpt_approve_concurrent_pool(
     checkout_payload: dict[str, Any] | None = None,
     stripe_hosted_url: str = "",
     progress: ProgressLogger = noop_progress,
-) -> tuple[str, str]:
+    link_deadline: float | None = None,
+    skip_initial_ping: bool = False,
+    tier_display_max_attempts: int | None = None,
+) -> tuple[str, str, str]:
     pool_size = normalize_approve_pool_size(pool_size)
     max_attempts = normalize_approve_pool_max_attempts(max_attempts)
+    display_max_attempts = (
+        max(1, int(tier_display_max_attempts))
+        if tier_display_max_attempts is not None
+        else max_attempts
+    )
     stop_event = threading.Event()
     state_lock = threading.Lock()
     state: dict[str, Any] = {
         "redirect_url": "",
+        "pm_redirect_url": "",
         "approve_result": "",
         "last_error": "",
         "attempts": 0,
@@ -2551,21 +2939,23 @@ def chatgpt_approve_concurrent_pool(
     poll_req = req or LongLinkRequest(accessToken="unused")
     poll_stripe_pk = stripe_pk or DEFAULT_STRIPE_PK
     poll_proxy_switched = False
+    fetch_ba = fetch_ba_token_enabled(poll_req)
 
-    try:
-        progress("chatgpt_approve", "正在发送 sentinel ping，准备确认 checkout。", proxy_runtime_details(chatgpt))
-        chatgpt.post(
-            "https://chatgpt.com/backend-api/sentinel/ping",
-            json={},
-            headers={
-                "Referer": "https://chatgpt.com/",
-                "x-openai-target-path": "/backend-api/sentinel/ping",
-                "x-openai-target-route": "/backend-api/sentinel/ping",
-            },
-            timeout=DEFAULT_TIMEOUT,
-        )
-    except Exception:
-        pass
+    if not skip_initial_ping:
+        try:
+            progress("chatgpt_approve", "正在发送 sentinel ping，准备确认 checkout。", proxy_runtime_details(chatgpt))
+            chatgpt.post(
+                "https://chatgpt.com/backend-api/sentinel/ping",
+                json={},
+                headers={
+                    "Referer": "https://chatgpt.com/",
+                    "x-openai-target-path": "/backend-api/sentinel/ping",
+                    "x-openai-target-route": "/backend-api/sentinel/ping",
+                },
+                timeout=DEFAULT_TIMEOUT,
+            )
+        except Exception:
+            pass
 
     progress(
         "chatgpt_approve",
@@ -2574,21 +2964,37 @@ def chatgpt_approve_concurrent_pool(
             "cs_id": cs_id,
             "approve_pool_size": pool_size,
             "approve_pool_max_attempts": max_attempts,
-            **proxy_runtime_details(chatgpt, checkout_proxy),
+            **proxy_runtime_details(chatgpt, approve_proxy or checkout_proxy),
         },
     )
 
     def record_redirect(url: str, source: str) -> None:
         if not is_actionable_stripe_redirect(url, preferred_hosts):
             return
+        pm_url = pm_redirect_snapshot(url)
+        stop_at_pm = not fetch_ba and bool(pm_url)
+        should_stop = fetch_ba or stop_at_pm or is_paypal_ba_url(url)
         with state_lock:
-            if state["redirect_url"]:
-                return
+            existing = str(state["redirect_url"] or "")
+            if existing and not (stop_at_pm and not pm_redirect_snapshot(existing)):
+                if not stop_at_pm:
+                    return
             state["redirect_url"] = url
-        stop_event.set()
-        progress("redirect_poll", f"并发轮询命中 Stripe/provider redirect（{source}）。", {"redirect_url": url})
+            if pm_url:
+                state["pm_redirect_url"] = pm_url
+        if should_stop:
+            stop_event.set()
+        progress(
+            "redirect_poll",
+            (
+                f"并发轮询命中 Stripe 中转地址（{source}），按配置停止后续解析。"
+                if stop_at_pm
+                else f"并发轮询命中 Stripe/provider redirect（{source}）。"
+            ),
+            {"redirect_url": url, "pm_redirect_url": pm_url, "fetch_ba_token": fetch_ba_token_enabled(poll_req)},
+        )
 
-    poll_proxy_cycle = stripe_poll_proxy_candidates(checkout_proxy, provider_proxy)
+    poll_proxy_cycle = stripe_poll_proxy_candidates(checkout_proxy, provider_proxy, approve_proxy)
 
     def ensure_poll_proxy() -> Any | None:
         nonlocal poll_proxy_switched
@@ -2597,12 +3003,12 @@ def chatgpt_approve_concurrent_pool(
         with state_lock:
             approved = state["approve_result"] == "approved" or state["approved_hits"] > 0
             if approved and not poll_proxy_switched:
-                poll_proxy = checkout_proxy or provider_proxy
+                poll_proxy = provider_proxy or approve_proxy or checkout_proxy
                 apply_poll_proxy(stripe, poll_proxy)
                 poll_proxy_switched = True
                 progress(
                     "redirect_poll",
-                    "approve 已命中，Stripe redirect 轮询优先使用 checkout 代理。",
+                    "approve 已命中，Stripe redirect 轮询优先使用 provider 代理。",
                     {
                         "approve_result": state["approve_result"],
                         "poll_proxy": safe_proxy_hint(poll_proxy),
@@ -2637,7 +3043,7 @@ def chatgpt_approve_concurrent_pool(
             except Exception as exc:
                 with state_lock:
                     state["last_error"] = str(exc)
-            time.sleep(0.35)
+            time.sleep(0.12)
 
     def approve_worker_loop() -> None:
         worker = clone_http_session(chatgpt)
@@ -2647,85 +3053,279 @@ def chatgpt_approve_concurrent_pool(
                     return
                 state["attempts"] += 1
                 attempt_no = state["attempts"]
+            parallel_probe_url = ""
+            probe_thread: threading.Thread | None = None
+            if stripe is not None:
+
+                def worker_probe() -> None:
+                    nonlocal parallel_probe_url
+                    try:
+                        poll_clone = clone_http_session(stripe)
+                        apply_poll_proxy(poll_clone, provider_proxy or approve_proxy or checkout_proxy)
+                        parallel_probe_url = probe_stripe_redirect_sources(
+                            poll_clone,
+                            cs_id,
+                            poll_stripe_pk,
+                            poll_req,
+                            ctx=poll_ctx,
+                            hosted_long_url=hosted_long_url,
+                            preferred_hosts=preferred_hosts,
+                            deep_scan=fetch_ba,
+                        )
+                    except Exception:
+                        parallel_probe_url = ""
+
+                probe_thread = threading.Thread(target=worker_probe, name=f"approve-probe-{attempt_no}", daemon=True)
+                probe_thread.start()
             result, error_text = chatgpt_approve_once(worker, cs_id, checkout)
+            if probe_thread is not None and (fetch_ba or result == "approved"):
+                probe_thread.join(timeout=bounded_link_timeout(3, link_deadline))
+            elif probe_thread is not None:
+                parallel_probe_url = ""
             with state_lock:
                 if result == "approved":
                     state["approve_result"] = "approved"
                     state["approved_hits"] += 1
+                    stop_event.set()
                 elif result == "blocked":
                     state["blocked_hits"] += 1
                     if state["approve_result"] not in {"approved"}:
                         state["approve_result"] = "blocked"
                 elif result and state["approve_result"] not in {"approved"}:
                     state["approve_result"] = result
-                if error_text:
+                if error_text and state["approve_result"] != "approved":
                     state["last_error"] = error_text
-            if attempt_no == 1 or attempt_no % 25 == 0 or result == "approved":
+                effective_result = effective_approve_result(str(state["approve_result"] or ""), result)
+            display_attempt = 1 if tier_display_max_attempts == 1 else attempt_no
+            should_log = (
+                attempt_no == 1
+                or attempt_no % 25 == 0
+                or result == "approved"
+                or effective_result == "approved"
+            )
+            if tier_display_max_attempts == 1 and attempt_no > 1 and effective_result != "approved":
+                should_log = False
+            if should_log:
                 progress(
                     "chatgpt_approve",
-                    f"并发 approve 第 {attempt_no}/{max_attempts} 次，approve_result={result or 'unknown'}。",
+                    (
+                        f"本档并发 approve 第 {display_attempt}/{display_max_attempts} 次，approve_result={effective_result}。"
+                        if tier_display_max_attempts == 1
+                        else f"并发 approve 第 {attempt_no}/{max_attempts} 次，approve_result={effective_result}。"
+                    ),
                     {
                         "cs_id": cs_id,
-                        "approve_attempt": attempt_no,
-                        "approve_max_attempts": max_attempts,
-                        "approve_result": result or state["approve_result"] or "unknown",
+                        "approve_attempt": display_attempt,
+                        "approve_max_attempts": display_max_attempts,
+                        "approve_result": effective_result,
                         "approve_pool_size": pool_size,
                         "blocked_hits": state["blocked_hits"],
                     },
                 )
-            if stripe is not None:
-                active_stripe = ensure_poll_proxy() or stripe
-                try:
-                    poll_clone = clone_http_session(active_stripe)
-                    apply_poll_proxy(poll_clone, checkout_proxy or provider_proxy)
-                    redirect_url = probe_stripe_redirect_sources(
-                        poll_clone,
-                        cs_id,
-                        poll_stripe_pk,
-                        poll_req,
-                        ctx=poll_ctx,
-                        hosted_long_url=hosted_long_url,
-                        preferred_hosts=preferred_hosts,
-                        deep_scan=True,
-                    )
-                    if redirect_url:
-                        record_redirect(redirect_url, "approve_worker")
+            if stripe is not None and (fetch_ba or result == "approved"):
+                redirect_url = parallel_probe_url
+                if not redirect_url:
+                    active_stripe = ensure_poll_proxy() or stripe
+                    try:
+                        poll_clone = clone_http_session(active_stripe)
+                        apply_poll_proxy(poll_clone, provider_proxy or approve_proxy or checkout_proxy)
+                        redirect_url = probe_stripe_redirect_sources(
+                            poll_clone,
+                            cs_id,
+                            poll_stripe_pk,
+                            poll_req,
+                            ctx=poll_ctx,
+                            hosted_long_url=hosted_long_url,
+                            preferred_hosts=preferred_hosts,
+                            deep_scan=fetch_ba,
+                        )
+                    except Exception:
+                        redirect_url = ""
+                if redirect_url:
+                    record_redirect(redirect_url, "approve_worker")
+                    if not fetch_ba and pm_redirect_stop_url(poll_req, redirect_url):
                         return
-                except Exception:
-                    pass
             time.sleep(random.uniform(0.03, 0.15))
 
-    worker_total = pool_size + (2 if stripe is not None else 0)
-    deadline = time.time() + 120
-    with ThreadPoolExecutor(max_workers=worker_total, thread_name_prefix="approve-pool") as executor:
+    worker_total = pool_size + (2 if stripe is not None and fetch_ba else 0)
+    pool_budget = bounded_link_timeout(14, link_deadline)
+    deadline = time.time() + pool_budget
+    pm_early_exit = ""
+    pm_early_approve_result = ""
+    executor = ThreadPoolExecutor(max_workers=worker_total, thread_name_prefix="approve-pool")
+    try:
         futures = [executor.submit(approve_worker_loop) for _ in range(pool_size)]
-        if stripe is not None:
+        if stripe is not None and fetch_ba:
             futures.extend([executor.submit(redirect_poller_loop), executor.submit(redirect_poller_loop)])
         while time.time() < deadline and not stop_event.is_set():
+            if link_deadline is not None:
+                ensure_link_generation_deadline(link_deadline)
             with state_lock:
-                if state["redirect_url"]:
+                current_redirect = str(state["redirect_url"] or "")
+                current_pm = str(state.get("pm_redirect_url") or "")
+                if not fetch_ba:
+                    hit_pm = pm_redirect_stop_url(poll_req, current_redirect, current_pm)
+                    if hit_pm:
+                        pm_early_exit = hit_pm
+                        pm_early_approve_result = str(state["approve_result"] or "")
+                        stop_event.set()
+                        break
+                if current_redirect and (
+                    fetch_ba
+                    or pm_redirect_snapshot(current_redirect)
+                    or pm_redirect_snapshot(current_pm)
+                    or is_paypal_ba_url(current_redirect)
+                ):
+                    break
+                if str(state.get("approve_result") or "") == "approved" and (
+                    current_redirect
+                    or pm_redirect_snapshot(current_pm)
+                    or not fetch_ba
+                ):
                     break
                 attempts_used_now = int(state["attempts"] or 0)
             if attempts_used_now >= max_attempts and all(future.done() for future in futures):
                 break
-            time.sleep(0.2)
+            time.sleep(0.12)
         stop_event.set()
-        for future in futures:
-            try:
-                future.result(timeout=1)
-            except Exception as exc:
-                with state_lock:
-                    state["last_error"] = str(exc)
+        if pm_early_exit and not fetch_ba:
+            for future in futures:
+                future.cancel()
+        else:
+            for future in futures:
+                try:
+                    future.result(timeout=0.5)
+                except Exception as exc:
+                    with state_lock:
+                        state["last_error"] = str(exc)
+    finally:
+        if pm_early_exit and not fetch_ba:
+            executor.shutdown(wait=False, cancel_futures=True)
+        else:
+            executor.shutdown(wait=True)
+
+    if pm_early_exit and not fetch_ba:
+        progress(
+            "redirect_poll",
+            "已命中 Stripe 中转地址，立即结束 approve/redirect 阶段。",
+            {
+                "redirect_url": pm_early_exit,
+                "pm_redirect_url": pm_early_exit,
+                "fetch_ba_token": False,
+                "stop_polling": True,
+            },
+        )
+        return redirect_flow_result(pm_early_exit, pm_early_approve_result, intermediate=pm_early_exit)
 
     with state_lock:
         redirect_url = str(state["redirect_url"] or "")
+        stored_pm_redirect = str(state.get("pm_redirect_url") or "")
         approve_result = str(state["approve_result"] or "")
         last_error = str(state["last_error"] or "")
         attempts_used = int(state["attempts"] or 0)
+    intermediate_pm = pm_redirect_snapshot(redirect_url) or stored_pm_redirect
+    stop_pm = pm_redirect_stop_url(poll_req, redirect_url, stored_pm_redirect, intermediate_pm)
+    if stop_pm and not fetch_ba:
+        progress(
+            "redirect_poll",
+            "已命中 Stripe 中转地址，按配置停止后续解析。",
+            {"redirect_url": stop_pm, "pm_redirect_url": stop_pm, "fetch_ba_token": False, "stop_polling": True},
+        )
+        return redirect_flow_result(stop_pm, approve_result, intermediate=stop_pm)
+    if redirect_url and is_paypal_ba_url(redirect_url):
+        return redirect_flow_result(redirect_url, approve_result, intermediate=intermediate_pm)
+    if redirect_url and is_actionable_stripe_redirect(redirect_url, preferred_hosts) and stop_pm:
+        progress(
+            "redirect_poll",
+            "已命中 Stripe 中转地址，按配置停止后续解析。",
+            {"redirect_url": stop_pm, "pm_redirect_url": stop_pm, "fetch_ba_token": False},
+        )
+        return redirect_flow_result(stop_pm, approve_result, intermediate=stop_pm)
     if redirect_url and is_actionable_stripe_redirect(redirect_url, preferred_hosts):
-        return redirect_url, approve_result
+        if not fetch_ba:
+            return redirect_flow_result(redirect_url, approve_result, intermediate=intermediate_pm)
+        resolved_ba, _, _ = resolve_external_redirect_with_proxy_pool(
+            stripe,
+            redirect_url,
+            preferred_hosts=("paypal.com",),
+            proxies=[provider_proxy, approve_proxy, checkout_proxy],
+            progress=progress,
+            link_deadline=link_deadline,
+            hop_timeout=bounded_link_timeout(5, link_deadline),
+        )
+        if is_paypal_ba_url(resolved_ba):
+            return redirect_flow_result(resolved_ba, approve_result, intermediate=intermediate_pm)
+        if stripe is not None and approve_result == "approved":
+            for label, proxy in poll_proxy_cycle:
+                if link_deadline is not None and remaining_link_seconds(link_deadline) <= 4.0:
+                    break
+                fast_session = clone_http_session(stripe)
+                apply_poll_proxy(fast_session, proxy)
+                fast_ba = poll_payment_page_provider_url_fast(
+                    fast_session,
+                    cs_id,
+                    poll_stripe_pk,
+                    poll_req,
+                    ctx=poll_ctx,
+                    timeout_seconds=bounded_link_timeout(4, link_deadline),
+                    progress=progress,
+                    link_deadline=link_deadline,
+                    ba_only=True,
+                )
+                if is_paypal_ba_url(fast_ba):
+                    progress(
+                        "redirect_poll",
+                        f"approve 后 payment page 快速轮询直接拿到 BA 链（{label}）。",
+                        {"long_url": fast_ba, "pm_redirect_url": intermediate_pm},
+                    )
+                    return redirect_flow_result(fast_ba, approve_result, intermediate=intermediate_pm)
+        if is_paypal_ba_url(redirect_url):
+            return redirect_flow_result(redirect_url, approve_result, intermediate=intermediate_pm)
+        return redirect_flow_result(resolved_ba or redirect_url, approve_result, intermediate=intermediate_pm)
     redirect_url = ""
-    if approve_result == "approved" and stripe is not None:
+    if fetch_ba and approve_result == "approved" and stripe is not None:
+        for label, proxy in poll_proxy_cycle:
+            fast_session = clone_http_session(stripe)
+            apply_poll_proxy(fast_session, proxy)
+            fast_redirect = poll_payment_page_provider_url_fast(
+                fast_session,
+                cs_id,
+                poll_stripe_pk,
+                poll_req,
+                ctx=poll_ctx,
+                timeout_seconds=8,
+                progress=progress,
+                link_deadline=link_deadline,
+            )
+            if is_paypal_ba_url(fast_redirect):
+                return redirect_flow_result(fast_redirect, approve_result, source_url=fast_redirect)
+            if fast_redirect:
+                intermediate_pm = pm_redirect_snapshot(fast_redirect)
+                stop_pm = pm_redirect_stop_url(poll_req, fast_redirect, intermediate_pm)
+                if stop_pm:
+                    progress(
+                        "redirect_poll",
+                        "快速轮询命中 Stripe 中转地址，按配置停止后续解析。",
+                        {"redirect_url": stop_pm, "pm_redirect_url": stop_pm, "fetch_ba_token": False},
+                    )
+                    return redirect_flow_result(stop_pm, approve_result, intermediate=stop_pm)
+                resolved_ba, _, _ = resolve_external_redirect_with_proxy_pool(
+                    fast_session,
+                    fast_redirect,
+                    preferred_hosts=("paypal.com",),
+                    proxies=[proxy, provider_proxy, approve_proxy, checkout_proxy],
+                    progress=progress,
+                    link_deadline=link_deadline,
+                )
+                if is_paypal_ba_url(resolved_ba):
+                    return redirect_flow_result(resolved_ba, approve_result, intermediate=intermediate_pm)
+                redirect_url = fast_redirect
+                break
+        if redirect_url and is_actionable_stripe_redirect(redirect_url, preferred_hosts):
+            stop_pm = pm_redirect_stop_url(poll_req, redirect_url)
+            if stop_pm:
+                return redirect_flow_result(stop_pm, approve_result, intermediate=stop_pm)
+            return redirect_flow_result(redirect_url, approve_result, source_url=redirect_url)
         recovered = post_approve_redirect_recovery(
             stripe,
             cs_id,
@@ -2735,7 +3335,8 @@ def chatgpt_approve_concurrent_pool(
             hosted_long_url=hosted_long_url,
             checkout_proxy=checkout_proxy,
             provider_proxy=provider_proxy,
-            timeout_seconds=45,
+            approve_proxy=approve_proxy,
+            timeout_seconds=bounded_link_timeout(10, link_deadline),
             progress=progress,
             confirm_payload=confirm_payload,
             pm_id=pm_id,
@@ -2745,7 +3346,22 @@ def chatgpt_approve_concurrent_pool(
             stripe_hosted_url=stripe_hosted_url,
         )
         if recovered and is_actionable_stripe_redirect(recovered, preferred_hosts):
-            return recovered, approve_result
+            if is_paypal_ba_url(recovered):
+                return redirect_flow_result(recovered, approve_result, source_url=recovered)
+            stop_pm = pm_redirect_stop_url(poll_req, recovered)
+            if stop_pm:
+                return redirect_flow_result(stop_pm, approve_result, intermediate=stop_pm)
+            intermediate_pm = pm_redirect_snapshot(recovered)
+            resolved_ba, _, _ = resolve_external_redirect_with_proxy_pool(
+                stripe,
+                recovered,
+                preferred_hosts=("paypal.com",),
+                proxies=[provider_proxy, approve_proxy, checkout_proxy],
+                progress=progress,
+            )
+            if is_paypal_ba_url(resolved_ba):
+                return redirect_flow_result(resolved_ba, approve_result, intermediate=intermediate_pm)
+            return redirect_flow_result(recovered, approve_result, intermediate=intermediate_pm)
         try:
             recovered = stripe_payment_page_redirect_url(
                 stripe,
@@ -2753,22 +3369,218 @@ def chatgpt_approve_concurrent_pool(
                 poll_stripe_pk,
                 poll_req,
                 ctx=poll_ctx,
-                timeout_seconds=30,
+                timeout_seconds=bounded_link_timeout(4 if not fetch_ba_token_enabled(poll_req) else 8, link_deadline),
                 progress=progress,
                 raise_on_terminal=False,
             )
             if recovered and is_actionable_stripe_redirect(recovered, preferred_hosts):
-                return recovered, approve_result
+                stop_pm = pm_redirect_stop_url(poll_req, recovered)
+                if stop_pm:
+                    return redirect_flow_result(stop_pm, approve_result, intermediate=stop_pm)
+                return redirect_flow_result(recovered, approve_result, source_url=recovered)
         except HTTPException:
             pass
     if approve_result == "approved":
-        raise HTTPException(
-            status_code=502,
-            detail=f"chatgpt approve 已通过但未拿到 PayPal redirect: attempts={attempts_used}, last_error={last_error}; approve_result={approve_result!r}",
-        )
+        return redirect_flow_result(redirect_url or "", approve_result, intermediate=intermediate_pm)
     raise HTTPException(
         status_code=502,
         detail=f"chatgpt approve 并发池耗尽: attempts={attempts_used}, last_error={last_error}; approve_result={approve_result!r}",
+    )
+
+
+def chatgpt_approve_escalating(
+    chatgpt: Any,
+    cs_id: str,
+    checkout: dict[str, Any],
+    *,
+    stripe: Any | None = None,
+    stripe_pk: str = "",
+    req: LongLinkRequest | None = None,
+    ctx: dict[str, Any] | None = None,
+    hosted_long_url: str = "",
+    checkout_proxy: str = "",
+    provider_proxy: str = "",
+    approve_proxy: str = "",
+    confirm_payload: dict[str, Any] | None = None,
+    pm_id: str = "",
+    link_type: str = "paypal",
+    init_payload: dict[str, Any] | None = None,
+    checkout_payload: dict[str, Any] | None = None,
+    stripe_hosted_url: str = "",
+    link_deadline: float | None = None,
+    progress: ProgressLogger = noop_progress,
+) -> tuple[str, str, str]:
+    tiers = APPROVE_ESCALATION_TIERS
+    last_error = ""
+    last_result = ""
+    try:
+        progress("chatgpt_approve", "正在发送 sentinel ping，准备确认 checkout。", proxy_runtime_details(chatgpt))
+        chatgpt.post(
+            "https://chatgpt.com/backend-api/sentinel/ping",
+            json={},
+            headers={
+                "Referer": "https://chatgpt.com/",
+                "x-openai-target-path": "/backend-api/sentinel/ping",
+                "x-openai-target-route": "/backend-api/sentinel/ping",
+            },
+            timeout=DEFAULT_TIMEOUT,
+        )
+    except Exception:
+        pass
+
+    for tier_index, pool_size in enumerate(tiers, start=1):
+        if link_deadline is not None:
+            ensure_link_generation_deadline(link_deadline)
+        tier_label = "串行 1 次" if pool_size == 1 else f"{pool_size} 路并发 · 本档 1 次"
+        progress(
+            "chatgpt_approve",
+            f"approve 第 {tier_index}/{len(tiers)} 档：{tier_label}。",
+            {
+                "cs_id": cs_id,
+                "approve_escalation_tier": tier_index,
+                "approve_escalation_total": len(tiers),
+                "approve_pool_size": pool_size,
+                "approve_pool_max_attempts": 1,
+                "approve_attempt": 0,
+                **proxy_runtime_details(chatgpt, approve_proxy or checkout_proxy),
+            },
+        )
+        if pool_size == 1:
+            poll_req = req or LongLinkRequest(accessToken="unused")
+            if stripe is not None:
+                result, error_text, redirect_url = chatgpt_approve_once_with_parallel_probe(
+                    chatgpt,
+                    cs_id,
+                    checkout,
+                    stripe=stripe,
+                    stripe_pk=stripe_pk,
+                    req=poll_req,
+                    ctx=ctx,
+                    hosted_long_url=hosted_long_url,
+                    provider_proxy=provider_proxy,
+                    approve_proxy=approve_proxy,
+                    checkout_proxy=checkout_proxy,
+                    deep_scan=fetch_ba_token_enabled(poll_req),
+                    progress=progress,
+                    link_deadline=link_deadline,
+                )
+            else:
+                progress("chatgpt_approve", "正在等待 ChatGPT approve 响应…", {"cs_id": cs_id})
+                result, error_text = chatgpt_approve_once(chatgpt, cs_id, checkout)
+                redirect_url = ""
+            if error_text:
+                last_error = error_text
+            if result:
+                last_result = result or last_result
+            if result == "approved":
+                progress(
+                    "chatgpt_approve",
+                    '首次串行 approve 已通过，approve_result="approved"，跳过后续重复 approve。',
+                    {
+                        "cs_id": cs_id,
+                        "approve_attempt": 1,
+                        "approve_max_attempts": 1,
+                        "approve_result": result,
+                        "approve_escalation_tier": tier_index,
+                        "approve_pool_size": 1,
+                    },
+                )
+                if redirect_url:
+                    return redirect_flow_result(redirect_url, result, source_url=redirect_url)
+                return redirect_flow_result("", result)
+            progress(
+                "chatgpt_approve",
+                f'首次串行 approve 未通过，approve_result="{result or "unknown"}"。',
+                {
+                    "cs_id": cs_id,
+                    "approve_attempt": 1,
+                    "approve_max_attempts": 1,
+                    "approve_result": result or "unknown",
+                    "approve_escalation_tier": tier_index,
+                    "approve_pool_size": 1,
+                    "error": last_error,
+                },
+            )
+            if str(result or "").strip().lower() != "blocked":
+                if tier_index >= len(tiers):
+                    break
+                continue
+            if tier_index < len(tiers):
+                next_pool = tiers[tier_index]
+                progress(
+                    "chatgpt_approve",
+                    f"首次 blocked，升级到 {next_pool} 路并发。",
+                    {
+                        "approve_result": "blocked",
+                        "approve_escalation_tier": tier_index,
+                        "approve_pool_size": next_pool,
+                    },
+                )
+                continue
+            break
+
+        try:
+            return chatgpt_approve_concurrent_pool(
+                chatgpt,
+                cs_id,
+                checkout,
+                pool_size=pool_size,
+                max_attempts=approve_escalation_wave_attempts(pool_size),
+                stripe=stripe,
+                stripe_pk=stripe_pk,
+                req=req,
+                ctx=ctx,
+                hosted_long_url=hosted_long_url,
+                checkout_proxy=checkout_proxy,
+                provider_proxy=provider_proxy,
+                approve_proxy=approve_proxy,
+                confirm_payload=confirm_payload,
+                pm_id=pm_id,
+                link_type=link_type,
+                init_payload=init_payload,
+                checkout_payload=checkout_payload,
+                stripe_hosted_url=stripe_hosted_url,
+                progress=progress,
+                link_deadline=link_deadline,
+                skip_initial_ping=True,
+                tier_display_max_attempts=1,
+            )
+        except HTTPException as exc:
+            last_error = str(exc.detail)
+            if "approve_result='approved'" in last_error or 'approve_result="approved"' in last_error or "已通过" in last_error:
+                raise
+            if "blocked" in last_error.lower() or "approve_result='blocked'" in last_error:
+                last_result = "blocked"
+            elif last_result not in {"approved"}:
+                last_result = last_result or "unknown"
+            if tier_index >= len(tiers):
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        f"chatgpt approve 在 {pool_size} 路并发下仍失败: {last_error}; "
+                        f"approve_result={last_result!r}"
+                    ),
+                ) from exc
+            next_pool = tiers[tier_index]
+            progress(
+                "chatgpt_approve",
+                f"第 {tier_index} 档本档 1 次未通过，升级到 {next_pool} 路。",
+                {
+                    "approve_result": last_result or "unknown",
+                    "approve_escalation_tier": tier_index,
+                    "approve_pool_size": next_pool,
+                    "approve_pool_max_attempts": 1,
+                    "error": last_error,
+                },
+            )
+            continue
+
+    raise HTTPException(
+        status_code=502,
+        detail=(
+            f"chatgpt approve 阶梯并发耗尽仍失败: {last_error}; "
+            f"approve_result={last_result!r}; tiers={','.join(str(item) for item in tiers)}"
+        ),
     )
 
 
@@ -2793,7 +3605,9 @@ def chatgpt_approve_with_retry(
     init_payload: dict[str, Any] | None = None,
     checkout_payload: dict[str, Any] | None = None,
     stripe_hosted_url: str = "",
-) -> tuple[str, str]:
+    link_deadline: float | None = None,
+    approve_proxy: str = "",
+) -> tuple[str, str, str]:
     if after_attempt is not None:
         country = checkout["billing_country"]
         processor_entity = processor_entity_for_country(country, checkout.get("processor_entity", ""))
@@ -2820,6 +3634,8 @@ def chatgpt_approve_with_retry(
         last_error = ""
         last_result = ""
         for attempt in range(1, attempts + 1):
+            if link_deadline is not None:
+                ensure_link_generation_deadline(link_deadline)
             result, error_text = chatgpt_approve_once(chatgpt, cs_id, checkout)
             if error_text:
                 last_error = error_text
@@ -2838,8 +3654,8 @@ def chatgpt_approve_with_retry(
                 )
                 redirect_url = after_attempt(attempt, attempts, result)
                 if redirect_url:
-                    return redirect_url, result
-                return "", result
+                    return redirect_flow_result(redirect_url, result, source_url=redirect_url)
+                return redirect_flow_result("", result)
             progress(
                 "chatgpt_approve",
                 f'checkout approve 第 {attempt}/{attempts} 次未通过，approve_result="{result or "unknown"}"。',
@@ -2853,10 +3669,33 @@ def chatgpt_approve_with_retry(
             )
             redirect_url = after_attempt(attempt, attempts, result)
             if redirect_url:
-                return redirect_url, result or last_result
+                return redirect_flow_result(redirect_url, result or last_result, source_url=redirect_url)
             if attempt < attempts:
                 time.sleep(min(2.0, 0.4 + attempt * 0.2))
         raise HTTPException(status_code=502, detail=f"chatgpt approve 重试耗尽: {last_error}; approve_result={last_result!r}")
+
+    if stripe is not None:
+        return chatgpt_approve_escalating(
+            chatgpt,
+            cs_id,
+            checkout,
+            stripe=stripe,
+            stripe_pk=stripe_pk,
+            req=req,
+            ctx=ctx,
+            hosted_long_url=hosted_long_url,
+            checkout_proxy=checkout_proxy,
+            provider_proxy=provider_proxy,
+            approve_proxy=approve_proxy,
+            confirm_payload=confirm_payload,
+            pm_id=pm_id,
+            link_type=link_type,
+            init_payload=init_payload,
+            checkout_payload=checkout_payload,
+            stripe_hosted_url=stripe_hosted_url,
+            link_deadline=link_deadline,
+            progress=progress,
+        )
 
     effective_pool_size = normalize_approve_pool_size(pool_size)
     effective_max_attempts = normalize_approve_pool_max_attempts(max_attempts)
@@ -2867,6 +3706,8 @@ def chatgpt_approve_with_retry(
         last_error = ""
         last_result = ""
         for attempt in range(1, effective_max_attempts + 1):
+            if link_deadline is not None:
+                ensure_link_generation_deadline(link_deadline)
             result, error_text = chatgpt_approve_once(chatgpt, cs_id, checkout)
             if error_text:
                 last_error = error_text
@@ -2883,7 +3724,7 @@ def chatgpt_approve_with_retry(
                         "approve_result": result,
                     },
                 )
-                return "", result
+                return redirect_flow_result("", result)
             progress(
                 "chatgpt_approve",
                 f'checkout approve 第 {attempt}/{effective_max_attempts} 次未通过，approve_result="{result or "unknown"}"。',
@@ -2901,26 +3742,9 @@ def chatgpt_approve_with_retry(
             status_code=502,
             detail=f"chatgpt approve 重试耗尽: {last_error}; approve_result={last_result!r}",
         )
-    return chatgpt_approve_concurrent_pool(
-        chatgpt,
-        cs_id,
-        checkout,
-        pool_size=effective_pool_size,
-        max_attempts=effective_max_attempts,
-        stripe=stripe,
-        stripe_pk=stripe_pk,
-        req=req,
-        ctx=ctx,
-        hosted_long_url=hosted_long_url,
-        checkout_proxy=checkout_proxy,
-        provider_proxy=provider_proxy,
-        confirm_payload=confirm_payload,
-        pm_id=pm_id,
-        link_type=link_type,
-        init_payload=init_payload,
-        checkout_payload=checkout_payload,
-        stripe_hosted_url=stripe_hosted_url,
-        progress=progress,
+    raise HTTPException(
+        status_code=502,
+        detail="chatgpt approve 需要 Stripe 会话才能执行阶梯并发与 redirect 轮询。",
     )
 
 
@@ -2938,37 +3762,45 @@ def redirect_url_after_confirm(
     pm_id: str = "",
     init_payload: dict[str, Any] | None = None,
     stripe_hosted_url: str = "",
-) -> tuple[str, str]:
+    link_deadline: float | None = None,
+) -> tuple[str, str, str]:
     ctx = ctx or {}
     terminal_error = extract_stripe_terminal_error(confirm_payload)
     if terminal_error:
         raise HTTPException(status_code=502, detail=terminal_error)
     redirect_url = extract_redirect_to_url(confirm_payload)
     if redirect_url:
-        return redirect_url, ""
+        stop_pm = pm_redirect_stop_url(req, redirect_url)
+        if stop_pm:
+            return stop_pm, "", stop_pm
+        return redirect_flow_result(redirect_url, "", source_url=redirect_url)
     submission = confirm_payload.get("submission_attempt") if isinstance(confirm_payload, dict) else None
     if isinstance(submission, dict) and submission.get("state") == "requires_approval":
         checkout_proxy = checkout_stage_proxy(req)
         provider_proxy = provider_stage_proxy(req)
-        if checkout_proxy:
-            set_proxy_url(chatgpt, checkout_proxy)
+        approve_proxy = approve_stage_proxy(req)
+        if approve_proxy:
+            set_proxy_url(chatgpt, approve_proxy)
         else:
             chatgpt.proxies = {}
         progress(
             "chatgpt_approve",
-            "requires_approval：ChatGPT approve 已切回 checkout 代理，启动并发 approve 池。",
+            "requires_approval：ChatGPT approve 使用独立 approve 出口代理，按 1→2→4→8→16→30 路阶梯并发。",
             {
                 "approve_result": "pending",
-                "approve_pool_size": normalize_approve_pool_size(req.approve_pool_size),
-                "approve_pool_max_attempts": normalize_approve_pool_max_attempts(req.approve_pool_max_attempts),
+                "approve_escalation_total": len(APPROVE_ESCALATION_TIERS),
+                "approve_pool_size": APPROVE_ESCALATION_TIERS[0],
+                "approve_pool_max_attempts": 1,
+                "approve_proxy": safe_proxy_hint(approve_proxy),
+                "checkout_proxy": safe_proxy_hint(checkout_proxy),
                 "provider_proxy": safe_proxy_hint(provider_proxy),
-                **proxy_runtime_details(chatgpt, checkout_proxy),
+                **proxy_runtime_details(chatgpt, approve_proxy),
             },
         )
         pool_max_attempts = normalize_approve_pool_max_attempts(req.approve_pool_max_attempts)
         if pool_max_attempts <= normalize_approve_retries(req.approve_retries):
             pool_max_attempts = max(pool_max_attempts, normalize_approve_retries(req.approve_retries))
-        approved_redirect_url, approve_result = chatgpt_approve_with_retry(
+        approved_redirect_url, approve_result, pm_redirect_url = chatgpt_approve_with_retry(
             chatgpt,
             cs_id,
             checkout,
@@ -2982,16 +3814,22 @@ def redirect_url_after_confirm(
             hosted_long_url=hosted_long_url,
             checkout_proxy=checkout_proxy,
             provider_proxy=provider_proxy,
+            approve_proxy=approve_proxy,
             confirm_payload=confirm_payload,
             pm_id=pm_id,
             link_type=normalize_link_type(req.link_type),
             init_payload=init_payload,
             checkout_payload=checkout,
             stripe_hosted_url=stripe_hosted_url,
+            link_deadline=link_deadline,
         )
         if approved_redirect_url:
-            return approved_redirect_url, approve_result
+            stop_pm = pm_redirect_stop_url(req, approved_redirect_url, pm_redirect_url)
+            if stop_pm:
+                return stop_pm, approve_result, stop_pm
+            return approved_redirect_url, approve_result, pm_redirect_url
         if approve_result == "approved":
+            short_poll = not fetch_ba_token_enabled(req)
             try:
                 recovered = stripe_payment_page_redirect_url(
                     stripe,
@@ -2999,14 +3837,19 @@ def redirect_url_after_confirm(
                     stripe_pk,
                     req,
                     ctx=ctx,
-                    timeout_seconds=30,
+                    timeout_seconds=bounded_link_timeout(6 if short_poll else 30, link_deadline),
                     progress=progress,
                     raise_on_terminal=False,
                 )
                 if recovered:
-                    return recovered, approve_result
+                    stop_pm = pm_redirect_stop_url(req, recovered)
+                    if stop_pm:
+                        return redirect_flow_result(stop_pm, approve_result, intermediate=stop_pm)
+                    return redirect_flow_result(recovered, approve_result, source_url=recovered)
             except HTTPException:
                 pass
+            if short_poll:
+                return redirect_flow_result("", approve_result)
             recovered = post_approve_redirect_recovery(
                 stripe,
                 cs_id,
@@ -3016,7 +3859,8 @@ def redirect_url_after_confirm(
                 hosted_long_url=hosted_long_url,
                 checkout_proxy=checkout_proxy,
                 provider_proxy=provider_proxy,
-                timeout_seconds=45,
+                approve_proxy=approve_proxy,
+                timeout_seconds=bounded_link_timeout(45, link_deadline),
                 progress=progress,
                 confirm_payload=confirm_payload,
                 pm_id=pm_id,
@@ -3026,21 +3870,38 @@ def redirect_url_after_confirm(
                 stripe_hosted_url=stripe_hosted_url,
             )
             if recovered:
-                return recovered, approve_result
-        return (
+                stop_pm = pm_redirect_stop_url(req, recovered)
+                if stop_pm:
+                    return redirect_flow_result(stop_pm, approve_result, intermediate=stop_pm)
+                return redirect_flow_result(recovered, approve_result, source_url=recovered)
+        if not fetch_ba_token_enabled(req):
+            return redirect_flow_result("", approve_result)
+        return redirect_flow_result(
             stripe_payment_page_redirect_url(
                 stripe,
                 cs_id,
                 stripe_pk,
                 req,
                 ctx=ctx,
-                timeout_seconds=45,
+                timeout_seconds=bounded_link_timeout(12, link_deadline),
                 progress=progress,
                 raise_on_terminal=False,
             ),
             approve_result,
         )
-    return stripe_payment_page_redirect_url(stripe, cs_id, stripe_pk, req, ctx=ctx, timeout_seconds=30, progress=progress), ""
+    return redirect_flow_result(
+        stripe_payment_page_redirect_url(
+            stripe,
+            cs_id,
+            stripe_pk,
+            req,
+            ctx=ctx,
+            timeout_seconds=bounded_link_timeout(10, link_deadline),
+            progress=progress,
+            raise_on_terminal=fetch_ba_token_enabled(req),
+        ),
+        "",
+    )
 
 
 def create_provider_link(
@@ -3052,9 +3913,10 @@ def create_provider_link(
     provider_proxy: str = "",
     stripe_session: Any | None = None,
     progress: ProgressLogger = noop_progress,
+    link_deadline: float | None = None,
 ) -> dict[str, str]:
     link_type = normalize_link_type(req.link_type)
-    stripe_pk = req.stripe_publishable_key.strip() or DEFAULT_STRIPE_PK
+    stripe_pk = stripe_publishable_key_for(checkout, req)
     stripe = stripe_session or build_stripe_session(req, proxy_override=provider_proxy)
     ctx = stripe_context(checkout["cs_id"], init_payload, req)
     hosted_long_url = to_openai_pay_url(stripe_hosted_url) or stripe_hosted_url
@@ -3062,17 +3924,36 @@ def create_provider_link(
     session_email = extract_session_email(req.access_token)
     if session_email:
         billing["email"] = session_email
+    billing_snapshot = billing_log_snapshot(billing)
     progress(
         "provider_prepare",
-        f"已生成 provider 账单资料：{checkout.get('billing_country', 'US')} / {checkout.get('currency', '')} / {link_type}",
-        {"billing_country": billing.get("country"), "currency": checkout.get("currency"), "payment_method_type": link_type},
+        "正在创建 payment_method 并提交 Stripe confirm…",
+        {
+            **billing_snapshot,
+            "currency": checkout.get("currency"),
+            "payment_method_type": link_type,
+        },
+    )
+    progress(
+        "provider_prepare",
+        (
+            f"已生成 provider 账单资料：{billing.get('country', 'US')} / {checkout.get('currency', '')} / {link_type} · "
+            f"{billing.get('name', '')} · {billing.get('email', '')} · "
+            f"{billing.get('line1', '')}, {billing.get('postal_code', '')} {billing.get('city', '')}"
+        ),
+        {
+            **billing_snapshot,
+            "currency": checkout.get("currency"),
+            "payment_method_type": link_type,
+        },
     )
     pm_id = stripe_create_payment_method(stripe, checkout["cs_id"], stripe_pk, billing, link_type, ctx)
     confirm_payload = stripe_confirm(stripe, checkout["cs_id"], pm_id, stripe_pk, link_type, init_payload, ctx, checkout, req, stripe_hosted_url)
     preferred_hosts = ("paypal.com",) if link_type == "paypal" else ()
     approve_result = ""
+    pm_redirect_url = ""
     try:
-        stripe_redirect_url, approve_result = redirect_url_after_confirm(
+        stripe_redirect_url, approve_result, pm_redirect_url = redirect_url_after_confirm(
             chatgpt,
             stripe,
             confirm_payload,
@@ -3086,8 +3967,32 @@ def create_provider_link(
             pm_id=pm_id,
             init_payload=init_payload,
             stripe_hosted_url=stripe_hosted_url,
+            link_deadline=link_deadline,
         )
-        if not stripe_redirect_url and approve_result == "approved":
+        early_pm = pm_redirect_stop_url(req, pm_redirect_url, stripe_redirect_url)
+        if link_type == "paypal" and early_pm and not fetch_ba_token_enabled(req):
+            progress(
+                "provider_redirect",
+                "已拿到 Stripe 中转地址，跳过后续 redirect 解析与轮询。",
+                {
+                    "pm_redirect_url": early_pm,
+                    "long_url": early_pm,
+                    "fetch_ba_token": False,
+                    "extract_status": "OK",
+                    "stop_polling": True,
+                },
+            )
+            return {
+                "payment_method_id": pm_id,
+                "stripe_redirect_url": early_pm,
+                "provider_redirect_url": early_pm,
+                "pm_redirect_url": early_pm,
+                "long_url": early_pm,
+                "approve_result": approve_result,
+                "provider_proxy_pool_used": False,
+                "provider_proxy_attempts": 0,
+            }
+        if not stripe_redirect_url and approve_result == "approved" and fetch_ba_token_enabled(req):
             stripe_redirect_url = stripe_finalize_after_approve(
                 stripe,
                 checkout["cs_id"],
@@ -3116,8 +4021,39 @@ def create_provider_link(
                     "approve_result": approve_result,
                 }
         raise
-    provider_url = resolve_external_redirect(stripe, stripe_redirect_url, preferred_hosts=preferred_hosts)
-    if preferred_hosts and not url_matches_hosts(provider_url, preferred_hosts):
+    provider_proxy_pool = [
+        provider_proxy or provider_stage_proxy(req),
+        approve_stage_proxy(req),
+        checkout_stage_proxy(req),
+    ]
+    pm_redirect_url = pm_redirect_url or pm_redirect_snapshot(stripe_redirect_url)
+    fetch_ba = fetch_ba_token_enabled(req)
+    stop_pm = pm_redirect_stop_url(req, pm_redirect_url, stripe_redirect_url)
+    if link_type == "paypal" and stop_pm:
+        provider_url = stop_pm
+        pm_redirect_url = stop_pm
+        provider_pool_used = False
+        provider_pool_attempts = 0
+        progress(
+            "provider_redirect",
+            "已拿到 Stripe 中转地址，按配置停止后续解析。",
+            {"pm_redirect_url": stop_pm, "fetch_ba_token": False},
+        )
+    elif is_paypal_ba_url(stripe_redirect_url):
+        provider_url = stripe_redirect_url
+        provider_pool_used = False
+        provider_pool_attempts = 1
+    else:
+        provider_url, provider_pool_used, provider_pool_attempts = resolve_external_redirect_with_proxy_pool(
+            stripe,
+            stripe_redirect_url,
+            preferred_hosts=preferred_hosts,
+            proxies=provider_proxy_pool,
+            progress=progress,
+            link_deadline=link_deadline,
+            req=req,
+        )
+    if not stop_pm and preferred_hosts and not url_matches_hosts(provider_url, preferred_hosts):
         try:
             repoll_url = stripe_payment_page_redirect_url(
                 stripe,
@@ -3125,44 +4061,86 @@ def create_provider_link(
                 stripe_pk,
                 req,
                 ctx=ctx,
-                timeout_seconds=45 if approve_result == "approved" else 20,
+                timeout_seconds=bounded_link_timeout(10, link_deadline) if link_deadline else (12 if approve_result == "approved" else 8),
                 progress=progress,
                 raise_on_terminal=False,
             )
             if is_actionable_stripe_redirect(repoll_url, preferred_hosts):
-                stripe_redirect_url = repoll_url
-                provider_url = resolve_external_redirect(stripe, repoll_url, preferred_hosts=preferred_hosts)
+                repoll_stop_pm = pm_redirect_stop_url(req, repoll_url)
+                if repoll_stop_pm:
+                    stop_pm = repoll_stop_pm
+                    stripe_redirect_url = repoll_stop_pm
+                    provider_url = repoll_stop_pm
+                    pm_redirect_url = repoll_stop_pm
+                else:
+                    stripe_redirect_url = repoll_url
+                    provider_url = resolve_external_redirect(stripe, repoll_url, preferred_hosts=preferred_hosts)
         except HTTPException:
             pass
-    if preferred_hosts and not url_matches_hosts(provider_url, preferred_hosts) and hosted_long_url:
+    if not stop_pm and preferred_hosts and not url_matches_hosts(provider_url, preferred_hosts) and hosted_long_url:
         hosted_provider_url = resolve_external_redirect(stripe, hosted_long_url, preferred_hosts=preferred_hosts)
         if url_matches_hosts(hosted_provider_url, preferred_hosts):
             progress("provider_recover", "Stripe redirect 未直接落到 PayPal，已从 hosted 页面补提 provider 链接。", {"provider_redirect_url": hosted_provider_url})
             provider_url = hosted_provider_url
-    long_url = provider_url or stripe_redirect_url
+    long_url = pm_redirect_stop_url(req, provider_url, pm_redirect_url, stripe_redirect_url) or provider_url or pm_redirect_url or stripe_redirect_url
     if link_type == "paypal":
         progress(
             "provider_redirect",
-            f"{checkout['cs_id']} : {checkout.get('billing_country', '')} - {checkout.get('currency', '')} - paypal",
+            f"{checkout['cs_id']} · {checkout.get('billing_country', '')} · {checkout.get('currency', '')} · paypal · 0 {checkout.get('currency', '')}",
             {
                 "cs_id": checkout["cs_id"],
                 "billing_country": checkout.get("billing_country"),
                 "currency": checkout.get("currency"),
                 "long_url": long_url,
-                "is_paypal_ba": "paypal.com/agreements/approve" in str(long_url or ""),
+                "is_paypal_ba": is_paypal_ba_url(long_url),
+                "pm_redirect_url": pm_redirect_url,
+                "provider_proxy_pool_used": provider_pool_used,
+                "provider_proxy_attempts": provider_pool_attempts,
+                "fetch_ba_token": fetch_ba,
+                "extract_status": "OK" if is_paypal_success_url(long_url, req) else "PENDING",
             },
         )
     return {
         "payment_method_id": pm_id,
         "stripe_redirect_url": stripe_redirect_url,
         "provider_redirect_url": provider_url,
+        "pm_redirect_url": pm_redirect_url,
         "long_url": long_url,
         "approve_result": approve_result,
+        "provider_proxy_pool_used": provider_pool_used,
+        "provider_proxy_attempts": provider_pool_attempts,
     }
 
 
 def is_paypal_ba_url(url: str) -> bool:
     return "paypal.com/agreements/approve" in str(url or "")
+
+
+def fetch_ba_token_enabled(req: LongLinkRequest) -> bool:
+    return bool(getattr(req, "fetch_ba_token", False))
+
+
+def is_pm_redirect_url(url: str) -> bool:
+    return bool(pm_redirect_snapshot(url))
+
+
+def pm_redirect_stop_url(req: LongLinkRequest, *urls: str) -> str:
+    if fetch_ba_token_enabled(req):
+        return ""
+    for url in urls:
+        snapshot = pm_redirect_snapshot(url)
+        if snapshot:
+            return snapshot
+    return ""
+
+
+def is_paypal_success_url(url: str, req: LongLinkRequest) -> bool:
+    current = str(url or "").strip()
+    if not current:
+        return False
+    if fetch_ba_token_enabled(req):
+        return is_paypal_ba_url(current)
+    return is_pm_redirect_url(current) or is_paypal_ba_url(current)
 
 
 def is_actionable_stripe_redirect(url: str, preferred_hosts: tuple[str, ...] = ()) -> bool:
@@ -3200,7 +4178,11 @@ def generate_long_link(req: LongLinkRequest) -> LongLinkResponse:
     return generate_long_link_core(req)
 
 
-def generate_long_link_once(req: LongLinkRequest, progress: ProgressLogger = noop_progress) -> LongLinkResponse:
+def generate_long_link_once(
+    req: LongLinkRequest,
+    progress: ProgressLogger = noop_progress,
+    link_deadline: float | None = None,
+) -> LongLinkResponse:
     req = apply_payment_strategy(req)
     link_type = normalize_link_type(req.link_type)
     checkout_proxy = checkout_stage_proxy(req)
@@ -3214,15 +4196,20 @@ def generate_long_link_once(req: LongLinkRequest, progress: ProgressLogger = noo
             "billing_country": effective_country(req),
             "currency": currency_for_country(effective_country(req)),
             "token": safe_token_hint(req.access_token),
-            "checkout_proxy": safe_proxy_hint(checkout_proxy),
-            "provider_proxy": safe_proxy_hint(provider_proxy) if provider_proxy else "",
+            "checkout_proxy": safe_proxy_hint(checkout_proxy) if checkout_proxy else "direct",
+            "provider_proxy": safe_proxy_hint(provider_proxy) if provider_proxy else ("direct" if direct_mode_enabled(req) else ""),
+            "all_no_proxy": direct_mode_enabled(req),
             "stripe_timezone": stripe_timezone_for_req(req),
         },
     )
     progress("chatgpt_session", "chatgpt_session")
     chatgpt = build_chatgpt_session(req)
     progress("chatgpt_session", "chatgpt_session", proxy_runtime_details(chatgpt, checkout_proxy))
-    progress("checkout", "checkout")
+    progress(
+        "checkout",
+        "正在请求 ChatGPT 创建 checkout…",
+        proxy_runtime_details(chatgpt, checkout_proxy),
+    )
     checkout = create_checkout(req, chatgpt)
     progress(
         "checkout",
@@ -3238,16 +4225,28 @@ def generate_long_link_once(req: LongLinkRequest, progress: ProgressLogger = noo
     stripe_init_proxy = ""
     provider_stripe = None
     if link_type in {"paypal", "gopay"}:
-        stripe_init_proxy = checkout_proxy
-        post_checkout_proxy = provider_proxy
+        # Stripe payment_pages 与账单地区绑定，init/confirm 必须走 provider 出口（DE/US），checkout 仅用于 ChatGPT 创建 cs。
+        stripe_init_proxy = provider_proxy or checkout_proxy
+        post_checkout_proxy = provider_proxy or checkout_proxy
         provider_stripe = build_stripe_session(req, proxy_override=stripe_init_proxy)
-    if link_type in {"paypal", "gopay"}:
-        time.sleep(1.2)
-    progress("stripe_init", "stripe_init")
-    init_payload = stripe_init(checkout["cs_id"], req, proxy_override=stripe_init_proxy, stripe_session=provider_stripe)
-    stripe_hosted_url = str(init_payload.get("stripe_hosted_url") or "").strip()
+    progress(
+        "stripe_init",
+        "正在请求 Stripe payment_pages/init…",
+        {"cs_id": checkout["cs_id"], **proxy_runtime_details(provider_stripe or build_stripe_session(req), stripe_init_proxy)},
+    )
+    init_payload = stripe_init(
+        checkout["cs_id"],
+        req,
+        proxy_override=stripe_init_proxy,
+        stripe_session=provider_stripe,
+        checkout=checkout,
+    )
+    stripe_hosted_url = str(init_payload.get("stripe_hosted_url") or init_payload.get("url") or "").strip()
     if not stripe_hosted_url:
-        raise HTTPException(status_code=502, detail=f"stripe init response missing stripe_hosted_url, keys={sorted(init_payload.keys())}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"stripe init response missing stripe_hosted_url/url, keys={sorted(init_payload.keys())}",
+        )
     progress(
         "stripe_init",
         "stripe_init",
@@ -3292,6 +4291,7 @@ def generate_long_link_once(req: LongLinkRequest, progress: ProgressLogger = noo
                 provider_proxy=post_checkout_proxy,
                 stripe_session=provider_stripe,
                 progress=progress,
+                link_deadline=link_deadline,
             )
         except HTTPException as exc:
             fallback = True
@@ -3303,59 +4303,90 @@ def generate_long_link_once(req: LongLinkRequest, progress: ProgressLogger = noo
             progress("fallback", "fallback", {"error": provider_error})
         if link_type == "paypal" and not fallback:
             long_url = str(provider.get("long_url") or "")
-            if not is_paypal_ba_url(long_url):
+            pm_url = str(provider.get("pm_redirect_url") or pm_redirect_snapshot(long_url) or "")
+            if not fetch_ba_token_enabled(req) and pm_url:
+                provider["long_url"] = pm_url
+                provider["pm_redirect_url"] = pm_url
+            elif not is_paypal_success_url(long_url, req):
                 fallback = True
-                provider_error = f"PAYPAL_LINK_NOT_FOUND: 当前仅拿到 {long_url[:200]}"
+                target_label = "PayPal BA 链" if fetch_ba_token_enabled(req) else "Stripe 中转地址"
+                provider_error = f"PAYPAL_LINK_NOT_FOUND: 未拿到 {target_label}，当前仅 {long_url[:200]}"
                 provider["long_url"] = hosted_long_url
-                progress("fallback", "未拿到 PayPal BA 链，将按失败重试。", {"error": provider_error, "long_url": long_url})
+                progress("fallback", f"未拿到 {target_label}，将按失败重试。", {"error": provider_error, "long_url": long_url})
     return response_from_parts(req, link_type, checkout, stripe_hosted_url, hosted_long_url, provider, fallback, provider_error, ok=not fallback)
 
 
 def generate_long_link_core(req: LongLinkRequest, progress: ProgressLogger = noop_progress) -> LongLinkResponse:
     link_type = normalize_link_type(req.link_type)
-    max_attempts = 1 if link_type == "hosted" else normalize_max_retries(req.max_retries)
+    deadline = time.time() + LINK_GENERATION_TIMEOUT_SECONDS
+    if link_type in {"paypal", "gopay"}:
+        max_attempts = 1
+    elif link_type == "hosted":
+        max_attempts = 1
+    else:
+        max_attempts = normalize_max_retries(req.max_retries)
     retry_history: list[RetryHistoryItem] = []
     last_result: LongLinkResponse | None = None
+
+    def timed_progress(step: str, message: str, data: dict[str, Any] | None = None) -> None:
+        ensure_link_generation_deadline(deadline)
+        progress(step, message, data)
+
     for attempt in range(1, max_attempts + 1):
+        ensure_link_generation_deadline(deadline)
+
         def attempt_progress(step: str, message: str, data: dict[str, Any] | None = None) -> None:
+            ensure_link_generation_deadline(deadline)
             payload = dict(data or {})
             payload.setdefault("attempt", attempt)
             payload.setdefault("max_attempts", max_attempts)
             if step == "input":
                 payload.setdefault("reset_steps", True)
-            progress(step, message, payload)
-        progress("retry", "retry", {"attempt": attempt, "max_attempts": max_attempts, "phase": "attempt_start"})
+            timed_progress(step, message, payload)
+
+        timed_progress("retry", "retry", {"attempt": attempt, "max_attempts": max_attempts, "phase": "attempt_start"})
         try:
-            result = generate_long_link_once(req, progress=attempt_progress)
+            result = generate_long_link_once(req, progress=attempt_progress, link_deadline=deadline)
         except HTTPException as exc:
             error_text = str(exc.detail)
             retry_history.append(RetryHistoryItem(attempt=attempt, ok=False, error=error_text))
-            if attempt < max_attempts:
-                progress("retry", "retry", {"attempt": attempt, "max_attempts": max_attempts, "error": error_text, "phase": "attempt_failed", "will_retry": True})
+            if attempt < max_attempts and time.time() < deadline:
+                timed_progress("retry", "retry", {"attempt": attempt, "max_attempts": max_attempts, "error": error_text, "phase": "attempt_failed", "will_retry": True})
                 continue
             raise
         except Exception as exc:
             error_text = str(exc)
             retry_history.append(RetryHistoryItem(attempt=attempt, ok=False, error=error_text))
-            if attempt < max_attempts:
-                progress("retry", "retry", {"attempt": attempt, "max_attempts": max_attempts, "error": error_text, "phase": "attempt_failed", "will_retry": True})
+            if attempt < max_attempts and time.time() < deadline:
+                timed_progress("retry", "retry", {"attempt": attempt, "max_attempts": max_attempts, "error": error_text, "phase": "attempt_failed", "will_retry": True})
                 continue
             raise
         last_result = result
         if link_type in {"paypal", "gopay"} and result.fallback:
             error_text = result.provider_error or "provider fallback"
             retry_history.append(RetryHistoryItem(attempt=attempt, ok=False, error=error_text, fallback=True, long_url=result.long_url))
-            will_retry = attempt < max_attempts
-            progress("fallback", "fallback", {"attempt": attempt, "max_attempts": max_attempts, "error": error_text, "phase": "attempt_failed", "will_retry": will_retry, "fallback_long_url": result.long_url})
+            will_retry = attempt < max_attempts and time.time() < deadline
+            timed_progress("fallback", "fallback", {"attempt": attempt, "max_attempts": max_attempts, "error": error_text, "phase": "attempt_failed", "will_retry": will_retry, "fallback_long_url": result.long_url})
             if will_retry:
-                progress("retry", "retry", {"attempt": attempt, "max_attempts": max_attempts, "error": error_text, "phase": "attempt_failed", "will_retry": True})
+                timed_progress("retry", "retry", {"attempt": attempt, "max_attempts": max_attempts, "error": error_text, "phase": "attempt_failed", "will_retry": True})
                 continue
             final_result = result.model_copy(update={"ok": False, "attempt_count": attempt, "max_attempts": max_attempts, "retry_history": list(retry_history)})
-            progress("done", "生成流程完成", {"attempt": attempt, "max_attempts": max_attempts, "long_url": final_result.long_url, "fallback": final_result.fallback, "provider_error": final_result.provider_error})
+            timed_progress("done", "生成流程完成", {"attempt": attempt, "max_attempts": max_attempts, "long_url": final_result.long_url, "fallback": final_result.fallback, "provider_error": final_result.provider_error})
             return final_result
         retry_history.append(RetryHistoryItem(attempt=attempt, ok=True, long_url=result.long_url))
         final_result = result.model_copy(update={"ok": True, "attempt_count": attempt, "max_attempts": max_attempts, "retry_history": list(retry_history)})
-        progress("done", "生成流程完成", {"attempt": attempt, "max_attempts": max_attempts, "long_url": final_result.long_url, "fallback": final_result.fallback, "provider_error": final_result.provider_error})
+        timed_progress(
+            "done",
+            "生成流程完成",
+            {
+                "attempt": attempt,
+                "max_attempts": max_attempts,
+                "long_url": final_result.long_url,
+                "pm_redirect_url": final_result.pm_redirect_url,
+                "fallback": final_result.fallback,
+                "provider_error": final_result.provider_error,
+            },
+        )
         return final_result
     if last_result is not None:
         return last_result
@@ -3468,7 +4499,7 @@ def get_paypal_link(req: PublicPayPalLinkRequest) -> PublicPayPalLinkResponse:
     inner_req = build_public_paypal_request(req)
     try:
         result = generate_long_link_core(inner_req, progress=progress)
-        if result.long_url and "paypal.com/agreements/approve" in result.long_url:
+        if result.ok and (is_paypal_ba_url(result.long_url) or is_pm_redirect_url(result.pm_redirect_url or result.long_url)):
             return build_public_paypal_success(result)
         return PublicPayPalLinkResponse(
             success=False,

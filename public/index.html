@@ -2374,11 +2374,15 @@
       }
 
       .proxy-result {
-        max-height: 34px;
+        min-height: 40px;
+        max-height: none;
+        overflow: visible;
         margin-top: 6px;
-        padding: 6px 8px;
-        white-space: nowrap;
-        text-overflow: ellipsis;
+        padding: 8px 10px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
 
       body {

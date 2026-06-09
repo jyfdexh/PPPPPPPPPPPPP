@@ -1,5 +1,6 @@
 # OpenAI Pay Long Link
 
+### 以后服务器同步 GitHub 更新：sudo opll-update
 Standalone tool for generating a hosted payment long link from a ChatGPT access token.
 
 ## Run

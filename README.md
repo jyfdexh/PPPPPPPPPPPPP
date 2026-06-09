@@ -83,3 +83,49 @@ https://checkout.stripe.com -> https://pay.openai.com
 For `paypal` and `gopay`, if Stripe provider redirect extraction fails but the
 hosted checkout URL exists, the API falls back to the hosted long link and
 returns `fallback: true` plus `provider_error`.
+
+## 服务器一键部署
+
+脚本风格参考 `mail 2`：首次安装后会创建 systemd 服务，并安装 `opll-update` 命令。后续你手动执行更新命令时，服务器会从 GitHub 拉取最新代码、更新依赖并重启服务。
+
+交互式安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jyfdexh/PPPPPPPPPPPPP/main/deploy/install.sh | sudo bash
+```
+
+非交互式安装示例：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jyfdexh/PPPPPPPPPPPPP/main/deploy/install.sh | sudo env \
+  DOMAIN=pay.2333330.xyz \
+  BIND_DOMAIN=yes \
+  USE_CLOUDFLARE=yes \
+  REPO_URL=https://github.com/jyfdexh/PPPPPPPPPPPPP.git \
+  BRANCH=main \
+  APP_DIR=/opt/opll \
+  APP_HOST=127.0.0.1 \
+  APP_PORT=8787 \
+  NONINTERACTIVE=yes \
+  bash
+```
+
+常用命令：
+
+```bash
+sudo opll-update
+sudo systemctl status opll
+sudo journalctl -u opll -f
+```
+
+代理说明：
+
+- 安装时 `OPENAI_PAY_DEFAULT_PROXY` 留空表示后端默认直连。
+- 如果服务器本机运行了 `127.0.0.1:3010` 代理，systemd 直跑模式可以直接填这个地址。
+- 不启用自动更新。需要同步 GitHub 时，手动执行 `sudo opll-update`。
+
+域名说明：
+
+- 默认域名是 `pay.2333330.xyz`。
+- 使用 Cloudflare 代理时，DNS 添加 A 记录：`pay.2333330.xyz` 指向服务器 IP，并开启橙色云。
+- Cloudflare SSL/TLS 模式选择 `Full`。脚本会生成自签源站证书；如果要用 `Full strict`，需要替换为 Cloudflare Origin Certificate。

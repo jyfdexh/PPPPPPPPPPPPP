@@ -108,6 +108,7 @@
         border-radius: 8px;
         background: rgba(255, 255, 255, 0.9);
         box-shadow: 0 10px 24px rgba(180, 35, 24, 0.08);
+        text-align: center;
       }
 
       .detected-email-banner strong {
@@ -383,6 +384,59 @@
         gap: 12px;
       }
 
+      .link-config-row {
+        display: grid;
+        grid-template-columns: minmax(100px, 0.7fr) minmax(160px, 0.9fr) minmax(300px, 1.4fr);
+        gap: 12px;
+        align-items: end;
+        margin-bottom: 12px;
+      }
+
+      .proxy-mode-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+        align-items: center;
+      }
+
+      .proxy-mode-options .proxy-hint {
+        flex: 1 1 100%;
+      }
+
+      .link-type-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 42px;
+        padding: 0 14px;
+        border: 1px solid rgba(12, 122, 82, 0.28);
+        border-radius: 7px;
+        background: rgba(12, 122, 82, 0.08);
+        color: var(--accent-dark);
+        font-weight: 800;
+      }
+
+      .checkbox-field {
+        display: grid;
+        gap: 4px;
+      }
+
+      .checkbox-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 42px;
+        margin: 0;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .checkbox-label input {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        accent-color: var(--accent);
+      }
+
       .proxy-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -592,8 +646,12 @@
       }
 
       .step-card.current {
-        border-color: rgba(12, 122, 82, 0.36);
-        box-shadow: inset 0 0 0 1px rgba(12, 122, 82, 0.16);
+        border-color: rgba(234, 88, 12, 0.42);
+        border-left-color: #ea580c;
+        background: #fff7ed;
+        box-shadow:
+          inset 0 0 0 1px rgba(234, 88, 12, 0.14),
+          0 8px 20px rgba(234, 88, 12, 0.08);
       }
 
       .step-card.done {
@@ -620,7 +678,7 @@
       }
 
       .step-status.current {
-        color: var(--blue);
+        color: #c2410c;
       }
 
       .step-status.done {
@@ -665,8 +723,8 @@
         padding: 12px;
         border: 1px solid var(--line);
         border-radius: 8px;
-        background: #08131a;
-        color: #d7ebff;
+        background: #ffffff;
+        color: var(--ink);
       }
 
       .log-panel.show {
@@ -686,8 +744,8 @@
       .log-list {
         display: grid;
         gap: 6px;
-        max-height: 300px;
-        overflow: auto;
+        max-height: none;
+        overflow: visible;
         font-family:
           Consolas, "SFMono-Regular", "Liberation Mono", monospace;
         font-size: 12px;
@@ -709,7 +767,7 @@
 
       .run-overview {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 10px;
       }
 
@@ -743,6 +801,10 @@
 
       .metric-value.error {
         color: var(--danger);
+      }
+
+      #currentStepNumberMetric {
+        color: var(--blue);
       }
 
       .metric-sub {
@@ -794,19 +856,35 @@
       }
 
       .step-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(290px, 320px);
+        gap: 12px;
+        overflow-x: auto;
         padding: 0 14px 14px;
+        align-items: start;
+        scroll-snap-type: x proximity;
       }
 
       .step-card {
-        min-height: 92px;
+        min-height: 170px;
         position: relative;
         border-left: 4px solid #cbd5d1;
+        scroll-snap-align: start;
+        padding: 14px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: #ffffff;
+        display: grid;
+        gap: 10px;
+        align-content: start;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
       }
 
       .step-card.current {
-        border-left-color: var(--blue);
-        background: #f7fbff;
+        border-left-color: #ea580c;
+        border-color: rgba(234, 88, 12, 0.36);
+        background: #fff7ed;
       }
 
       .step-card.done {
@@ -825,7 +903,42 @@
         display: flex;
         justify-content: space-between;
         gap: 10px;
+        align-items: start;
+      }
+
+      .step-card-head {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+      }
+
+      .step-index {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        display: inline-flex;
         align-items: center;
+        justify-content: center;
+        background: #eef2f7;
+        color: #475569;
+        font-size: 12px;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .step-head-meta {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .step-status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
       }
 
       .step-duration {
@@ -842,105 +955,294 @@
         overflow: hidden;
       }
 
-      .log-panel {
-        background: #f8faf9;
-        color: var(--ink);
-      }
-
-      .log-panel.show {
+      .step-card-meta {
         display: grid;
-      }
-
-      .log-head {
-        color: var(--ink);
-      }
-
-      .log-list {
-        max-height: 440px;
         gap: 8px;
       }
 
-      .log-line {
-        display: grid;
+      .step-badges {
+        display: flex;
         gap: 6px;
-        padding: 9px 10px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        color: var(--ink);
+        flex-wrap: wrap;
       }
 
-      .log-line.error {
-        border-color: rgba(180, 35, 24, 0.28);
-        background: #fff6f5;
-        color: var(--danger);
-      }
-
-      .log-line.done {
-        border-color: rgba(12, 122, 82, 0.24);
-        background: #f2fbf5;
-        color: var(--ink);
-      }
-
-      .log-main {
-        display: grid;
-        grid-template-columns: auto auto minmax(0, 1fr);
-        gap: 8px;
-        align-items: baseline;
-      }
-
-      .log-time,
-      .log-step {
-        color: var(--muted);
-        font-size: 12px;
-        white-space: nowrap;
-      }
-
-      .log-step {
-        padding: 2px 7px;
+      .step-badge {
+        padding: 2px 8px;
         border-radius: 999px;
-        background: #eef5f1;
+        background: #edf7f3;
         color: var(--accent-dark);
+        font-size: 11px;
         font-weight: 800;
       }
 
-      .log-message {
-        overflow-wrap: anywhere;
-        line-height: 1.45;
+      .step-badge.warn {
+        background: #fff4e5;
+        color: #9a4d00;
       }
 
-      .log-meta {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        color: var(--muted);
-        font-size: 12px;
-      }
-
-      .log-pill {
-        padding: 2px 7px;
-        border-radius: 999px;
-        background: #f1f5f9;
-        color: #475569;
-      }
-
-      .log-pill.ok {
+      .step-badge.ok {
         background: #dcfce7;
         color: #166534;
       }
 
-      .log-pill.error {
+      .step-badge.error {
         background: #fee2e2;
         color: #991b1b;
       }
 
+      .step-meta-note {
+        color: #475569;
+        font-size: 12px;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+
+      .step-log-details {
+        margin-top: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 8px;
+        background: #08131a;
+        overflow: hidden;
+      }
+
+      .step-log-details > summary {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 10px;
+        cursor: pointer;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 800;
+        list-style: none;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .step-log-details > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .step-log-details > summary::after {
+        content: "收起";
+        color: #93c5fd;
+        font-size: 11px;
+      }
+
+      .step-log-details:not([open]) > summary::after {
+        content: "展开";
+      }
+
+      .step-log-list {
+        display: grid;
+        gap: 8px;
+        max-height: 320px;
+        overflow: auto;
+        padding: 10px;
+      }
+
+      .step-log-summary {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .step-log-summary strong {
+        color: #f8fafc;
+      }
+
+      .step-log-count {
+        color: #93c5fd;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .step-log-empty {
+        padding: 10px;
+        border: 1px dashed rgba(148, 163, 184, 0.28);
+        border-radius: 8px;
+        color: #94a3b8;
+        font-size: 12px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .log-list {
+        max-height: 420px;
+      }
+
+      .log-line {
+        padding: 4px 0;
+        border: none;
+        border-radius: 0;
+        background: transparent;
+        color: var(--ink);
+      }
+
+      .log-line.error {
+        color: var(--danger);
+      }
+
+      .log-line.done {
+        color: var(--accent-dark);
+      }
+
+      .log-main {
+        display: block;
+        line-height: 1.55;
+      }
+
+      .log-time {
+        color: #7dd3fc;
+        margin-right: 8px;
+      }
+
+      .log-step {
+        color: #fde68a;
+        margin-right: 8px;
+        font-weight: 700;
+      }
+
+      .log-message {
+        color: inherit;
+      }
+
+      .log-meta {
+        margin-top: 4px;
+        padding-left: 12px;
+        color: #94a3b8;
+        font-size: 11px;
+      }
+
+      .log-pill {
+        padding: 1px 6px;
+        border-radius: 4px;
+        background: #1e293b;
+        color: #cbd5e1;
+        margin-right: 6px;
+      }
+
+      .log-pill.ok {
+        background: #14532d;
+        color: #bbf7d0;
+      }
+
+      .log-pill.error {
+        background: #7f1d1d;
+        color: #fecaca;
+      }
+
       .log-data {
+        background: #0f172a;
+        color: #cbd5e1;
+        border: 1px solid #1e3a5f;
         margin: 0;
-        color: #64748b;
+        color: #93c5fd;
         white-space: pre-wrap;
         word-break: break-word;
         font-size: 11px;
         line-height: 1.45;
+      }
+
+      .archive-panel {
+        display: none !important;
+      }
+
+      .api-details {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fbfcfd;
+        padding: 0;
+      }
+
+      .api-details > summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 14px;
+        cursor: pointer;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 800;
+        list-style: none;
+      }
+
+      .api-details > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .api-details > summary::after {
+        content: "展开";
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .api-details[open] > summary::after {
+        content: "收起";
+      }
+
+      .api-details .api-panel {
+        padding: 0 14px 14px;
+      }
+
+      .link-display {
+        display: block;
+        min-height: 44px;
+        padding: 10px 12px;
+        border: 1px dashed rgba(59, 130, 246, 0.22);
+        border-radius: 8px;
+        background: #ffffff;
+        cursor: pointer;
+        transition:
+          border-color 0.16s ease,
+          background 0.16s ease,
+          transform 0.16s ease;
+      }
+
+      .link-display:hover {
+        border-color: rgba(59, 130, 246, 0.5);
+        background: #f7fbff;
+        transform: translateY(-1px);
+      }
+
+      .link-display.empty {
+        cursor: default;
+        color: var(--muted);
+        border-style: solid;
+      }
+
+      .link-display.hero-link {
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.55;
+        min-height: 58px;
+        padding: 14px 16px;
+        color: #0b4f46;
+        border-color: rgba(12, 122, 82, 0.28);
+        background: linear-gradient(180deg, #f7fffb 0%, #ffffff 100%);
+      }
+
+      .link-display.hero-link.pm-link {
+        font-size: 16px;
+        letter-spacing: 0.01em;
+      }
+
+      .result .row {
+        display: grid;
+        gap: 6px;
+      }
+
+      .result .row label {
+        margin-bottom: 0;
+      }
+
+      .result code {
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      .result-actions {
+        justify-content: flex-start;
       }
 
       @keyframes metricPulse {
@@ -1147,13 +1449,19 @@
         font-size: 13px;
       }
 
+      @media (max-width: 1200px) {
+        .run-overview {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
       @media (max-width: 960px) {
         .run-overview {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .step-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-auto-columns: minmax(260px, 280px);
         }
       }
 
@@ -1227,10 +1535,15 @@
         .run-overview,
         .proxy-grid,
         .grid,
-        .step-grid {
+        .link-config-row {
           min-width: 0;
           width: 100%;
           grid-template-columns: 1fr;
+        }
+
+        .step-grid {
+          width: 100%;
+          grid-auto-columns: minmax(82vw, 82vw);
         }
 
         header,
@@ -1242,6 +1555,1057 @@
           font-size: 15px;
         }
       }
+
+      .step-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        grid-auto-flow: row;
+        grid-auto-columns: unset;
+        gap: 10px;
+        width: 100%;
+        overflow: visible;
+        padding: 12px 14px 14px;
+        scroll-snap-type: none;
+      }
+
+      .step-card {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(165px, 0.9fr) minmax(190px, 1.2fr) minmax(130px, 0.8fr);
+        gap: 0;
+        align-items: stretch;
+        padding: 0;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-left: 5px solid #cbd5d1;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: none;
+        scroll-snap-align: none;
+      }
+
+      .step-card.current {
+        border-color: rgba(234, 88, 12, 0.34);
+        border-left-color: #ea580c;
+        background: #fff7ed;
+      }
+
+      .step-card.done {
+        border-color: rgba(12, 122, 82, 0.22);
+        border-left-color: var(--accent);
+        background: #f7fcf9;
+      }
+
+      .step-card.error {
+        border-color: rgba(180, 35, 24, 0.28);
+        border-left-color: var(--danger);
+        background: #fff8f7;
+      }
+
+      .step-card.skipped {
+        border-left-color: var(--warning);
+        background: #fffdf7;
+      }
+
+      .step-card-head,
+      .step-message,
+      .step-card-meta {
+        min-width: 0;
+        padding: 12px 14px;
+      }
+
+      .step-card-head,
+      .step-message {
+        border-right: 1px solid rgba(148, 163, 184, 0.18);
+      }
+
+      .step-card-head {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+      }
+
+      .step-index {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        background: #eef2f7;
+        color: #475569;
+      }
+
+      .step-card-headline {
+        align-items: center;
+      }
+
+      .step-card-headline strong {
+        font-size: 14px;
+      }
+
+      .step-duration {
+        font-size: 12px;
+      }
+
+      .step-status {
+        width: fit-content;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #edf2f7;
+        color: #475569;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .step-status.current {
+        background: #ffedd5;
+        color: #c2410c;
+      }
+
+      .step-status.done {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .step-status.skipped {
+        background: #fff7ed;
+        color: #9a3412;
+      }
+
+      .step-status.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .step-message {
+        display: flex;
+        align-items: center;
+        color: #334155;
+        font-size: 13px;
+        line-height: 1.55;
+        -webkit-line-clamp: unset;
+      }
+
+      .step-card-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: center;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .step-badges {
+        display: contents;
+      }
+
+      .step-badge {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .step-meta-note {
+        flex-basis: 100%;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #64748b;
+      }
+
+      .step-log-details {
+        grid-column: 1 / -1;
+        margin: 0;
+        border: 0;
+        border-top: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 0;
+        background: #071018;
+      }
+
+      .step-log-details > summary {
+        min-height: 34px;
+        padding: 8px 14px;
+      }
+
+      .step-log-list {
+        max-height: 230px;
+        padding: 10px 14px 12px;
+        gap: 6px;
+      }
+
+      .step-log-list .log-line {
+        padding: 6px 0;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+      }
+
+      .step-log-list .log-line:last-child {
+        border-bottom: 0;
+      }
+
+      .step-log-list .log-main {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0 8px;
+      }
+
+      .step-log-list .log-data {
+        max-height: 120px;
+        overflow: auto;
+        margin-top: 6px;
+        padding: 8px;
+      }
+
+      @media (max-width: 840px) {
+        .step-card {
+          grid-template-columns: 1fr;
+        }
+
+        .step-card-head,
+        .step-message {
+          border-right: 0;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+        }
+
+        .step-card-meta {
+          border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+        }
+      }
+
+      #showPrinciple,
+      .guide-panel {
+        display: none !important;
+      }
+
+      .header-email {
+        justify-content: center;
+      }
+
+      .detected-email-banner {
+        width: min(100%, 480px);
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        padding: 11px 16px;
+        border: 1px solid rgba(12, 122, 82, 0.22);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 10px 30px rgba(22, 48, 43, 0.08);
+        text-align: left;
+      }
+
+      .detected-email-banner::before {
+        content: "@";
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #edf7f3;
+        color: var(--accent-dark);
+        font-size: 16px;
+        font-weight: 900;
+      }
+
+      .detected-email-banner strong {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .detected-email-banner span {
+        min-height: 0;
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.35;
+      }
+
+      .detected-email-banner.empty {
+        border-color: rgba(95, 118, 111, 0.22);
+        background: rgba(255, 255, 255, 0.62);
+      }
+
+      .detected-email-banner.empty::before {
+        background: #eef3ef;
+        color: #8ca098;
+      }
+
+      .tool {
+        grid-template-columns:
+          minmax(420px, calc((100% - 12px) * var(--left-pane-ratio)))
+          8px
+          minmax(560px, calc((100% - 12px) * var(--right-pane-ratio)));
+        gap: 6px;
+      }
+
+      .form-panel {
+        gap: 12px;
+      }
+
+      .form-panel textarea {
+        min-height: 132px;
+      }
+
+      .proxy-grid {
+        gap: 8px;
+      }
+
+      .proxy-card,
+      .quick-proxy-card {
+        padding: 10px;
+      }
+
+      .proxy-card-head {
+        gap: 4px;
+      }
+
+      .proxy-card-head strong {
+        font-size: 14px;
+      }
+
+      .proxy-card-head span {
+        display: block;
+        max-height: 34px;
+        overflow: hidden;
+        color: #71867f;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .proxy-card input,
+      .quick-proxy-card input {
+        min-height: 36px;
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+
+      .proxy-actions {
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .proxy-actions .proxy-hint {
+        display: none;
+      }
+
+      .proxy-result {
+        min-height: 0;
+        max-height: 44px;
+        overflow: hidden;
+        margin-top: 8px;
+        padding: 7px 9px;
+        font-size: 12px;
+      }
+
+      .step-panel {
+        background: #ffffff;
+      }
+
+      .step-top {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr) auto;
+        align-items: stretch;
+      }
+
+      .overview-final-link {
+        min-width: 0;
+        display: grid;
+        gap: 5px;
+        padding: 10px 12px;
+        border: 1px solid rgba(12, 122, 82, 0.18);
+        border-radius: 8px;
+        background: #f2fbf5;
+      }
+
+      .overview-final-link[hidden] {
+        display: none !important;
+      }
+
+      .overview-final-link strong {
+        color: var(--accent-dark);
+        font-size: 13px;
+      }
+
+      .result-success-tag {
+        display: inline-flex;
+        align-items: center;
+        margin-left: 8px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #dcfce7;
+        color: #166534;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .result-success-tag[hidden] {
+        display: none !important;
+      }
+
+      .result-success-banner {
+        grid-column: 1 / -1;
+        padding: 10px 14px;
+        border: 1px solid rgba(12, 122, 82, 0.22);
+        border-radius: 8px;
+        background: linear-gradient(180deg, #f2fbf5 0%, #ffffff 100%);
+        color: #166534;
+        font-size: 18px;
+        font-weight: 900;
+        letter-spacing: 0.04em;
+      }
+
+      .result-success-banner[hidden] {
+        display: none !important;
+      }
+
+      .overview-final-link.is-success {
+        border-color: rgba(12, 122, 82, 0.28);
+        background: #f2fbf5;
+      }
+
+      .overview-final-link code {
+        color: #1d4b42;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.55;
+        white-space: normal;
+        word-break: break-all;
+      }
+
+      .result {
+        padding: 10px;
+        background: #ffffff;
+      }
+
+      .result.show {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 8px 12px;
+        align-items: start;
+      }
+
+      .result-actions {
+        align-self: stretch;
+      }
+
+      .result .row {
+        min-width: 0;
+      }
+
+      .result .row:nth-of-type(n + 2) {
+        display: none;
+      }
+
+      .result .link-display {
+        min-height: 38px;
+        padding: 8px 10px;
+      }
+
+      .result .link-display.hero-link {
+        min-height: 64px;
+        padding: 14px 16px;
+        font-size: 16px;
+      }
+
+      .email-stats-panel {
+        position: static;
+        padding: 10px;
+        box-shadow: none;
+      }
+
+      .step-log-details {
+        background: #f8faf9;
+        border-top: 1px solid rgba(12, 122, 82, 0.12);
+      }
+
+      .step-log-details > summary {
+        color: var(--ink);
+        background: #f2f7f4;
+      }
+
+      .step-log-summary strong {
+        color: var(--ink);
+      }
+
+      .step-log-count,
+      .step-log-details > summary::after {
+        color: var(--accent-dark);
+      }
+
+      .step-log-list {
+        max-height: none;
+        overflow: visible;
+        padding: 10px 14px 12px;
+        background: #ffffff;
+      }
+
+      .step-log-list .log-line {
+        padding: 8px 0;
+        color: var(--ink);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+      }
+
+      .step-log-list .log-line.error {
+        color: var(--danger);
+      }
+
+      .step-log-list .log-line.done {
+        color: var(--accent-dark);
+      }
+
+      .step-log-list .log-time {
+        color: #2563eb;
+      }
+
+      .step-log-list .log-step {
+        color: var(--accent-dark);
+      }
+
+      .step-log-list .log-meta {
+        color: #64748b;
+      }
+
+      .step-log-list .log-pill {
+        background: #edf7f3;
+        color: var(--accent-dark);
+      }
+
+      .step-log-list .log-pill.ok {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .step-log-list .log-pill.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .step-log-list .log-data {
+        max-height: none;
+        overflow: visible;
+        background: #f8fafc;
+        color: #334155;
+        border: 1px solid #d9e8df;
+      }
+
+      .right-column {
+        gap: 12px;
+      }
+
+      .step-panel {
+        gap: 10px;
+        padding: 14px;
+        border-color: rgba(12, 122, 82, 0.22);
+        background: #fbfdfb;
+      }
+
+      .step-top {
+        grid-template-columns: minmax(180px, 0.92fr) minmax(220px, 1.08fr) auto;
+        gap: 10px;
+        align-items: stretch;
+      }
+
+      .step-top > div:first-child {
+        min-width: 0;
+      }
+
+      .step-top label {
+        margin-bottom: 2px;
+      }
+
+      #currentStepTitle strong {
+        font-size: 15px;
+      }
+
+      .step-subtitle {
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .step-metric {
+        min-width: 46px;
+        display: inline-flex;
+        align-items: start;
+        justify-content: end;
+        padding-top: 2px;
+        color: var(--muted);
+        font-weight: 800;
+      }
+
+      .overview-final-link {
+        cursor: pointer;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+        transition:
+          border-color 0.16s ease,
+          background 0.16s ease,
+          transform 0.16s ease;
+      }
+
+      .overview-final-link:hover {
+        border-color: rgba(12, 122, 82, 0.34);
+        background: #eaf8ef;
+        transform: translateY(-1px);
+      }
+
+      .run-overview {
+        gap: 8px;
+      }
+
+      .metric-card {
+        min-height: 76px;
+        padding: 10px 12px;
+      }
+
+      .metric-value {
+        font-size: 23px;
+      }
+
+      .metric-sub {
+        font-size: 11px;
+      }
+
+      .progress-track {
+        height: 7px;
+      }
+
+      .result {
+        border-color: rgba(12, 122, 82, 0.18);
+        background: #ffffff;
+      }
+
+      .result.show {
+        min-height: 0;
+        padding: 10px 12px;
+      }
+
+      .result-actions {
+        gap: 8px;
+        align-items: center;
+      }
+
+      .result-actions button,
+      .result-actions a.button {
+        min-height: 36px;
+        padding: 0 14px;
+      }
+
+      .flow-details {
+        border-color: rgba(12, 122, 82, 0.18);
+        background: #ffffff;
+      }
+
+      .flow-details > summary {
+        min-height: 42px;
+        padding: 10px 14px;
+        background: #f8fbf9;
+      }
+
+      .step-grid {
+        gap: 8px;
+        padding: 10px 12px 12px;
+      }
+
+      .step-card {
+        grid-template-columns: minmax(154px, 0.82fr) minmax(200px, 1.18fr) minmax(128px, 0.8fr);
+        border-left-width: 4px;
+      }
+
+      .step-card-head,
+      .step-message,
+      .step-card-meta {
+        padding: 10px 12px;
+      }
+
+      .step-index {
+        width: 28px;
+        height: 28px;
+      }
+
+      .step-card-headline strong {
+        font-size: 13px;
+      }
+
+      .step-message {
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .step-card-meta {
+        gap: 6px;
+      }
+
+      .step-log-details {
+        background: #f8faf9;
+      }
+
+      .step-log-details > summary {
+        color: var(--ink);
+        background: #f3f8f5;
+      }
+
+      .step-log-empty {
+        color: #64748b;
+        background: #ffffff;
+      }
+
+      .log-panel {
+        border-color: rgba(12, 122, 82, 0.16);
+        background: #ffffff;
+        color: var(--ink);
+      }
+
+      .log-head {
+        color: var(--ink);
+      }
+
+      .log-list {
+        max-height: none;
+        overflow: visible;
+        color: var(--ink);
+      }
+
+      .log-line {
+        color: var(--ink);
+      }
+
+      .log-line.error {
+        color: var(--danger);
+      }
+
+      .log-line.done {
+        color: var(--accent-dark);
+      }
+
+      .log-time {
+        color: #2563eb;
+      }
+
+      .log-step {
+        color: var(--accent-dark);
+      }
+
+      .log-meta {
+        color: #64748b;
+      }
+
+      .log-pill {
+        background: #edf7f3;
+        color: var(--accent-dark);
+      }
+
+      .log-pill.ok {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .log-pill.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .log-data {
+        max-height: none;
+        overflow: visible;
+        background: #f8fafc;
+        color: #334155;
+        border: 1px solid #d9e8df;
+      }
+
+      .detected-email-banner {
+        width: min(100%, 440px);
+        grid-template-areas:
+          "icon label"
+          "icon value";
+        grid-template-columns: 34px minmax(0, 1fr);
+        justify-content: center;
+        padding: 10px 14px;
+      }
+
+      .detected-email-banner::before {
+        grid-area: icon;
+      }
+
+      .detected-email-banner strong {
+        grid-area: label;
+      }
+
+      .detected-email-banner span {
+        grid-area: value;
+        word-break: break-all;
+      }
+
+      .quick-proxy-card {
+        margin-bottom: 8px;
+      }
+
+      .proxy-grid {
+        gap: 8px;
+      }
+
+      .proxy-card,
+      .quick-proxy-card {
+        padding: 9px;
+      }
+
+      .proxy-card-head {
+        margin-bottom: 7px;
+      }
+
+      .proxy-grid .proxy-card-head span {
+        display: none;
+      }
+
+      .quick-proxy-card .proxy-card-head span {
+        max-height: 18px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .proxy-actions {
+        gap: 6px;
+        margin-top: 6px;
+      }
+
+      .proxy-actions button {
+        min-height: 32px;
+        padding: 0 10px;
+        font-size: 12px;
+      }
+
+      .proxy-result {
+        max-height: 34px;
+        margin-top: 6px;
+        padding: 6px 8px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      body {
+        background:
+          linear-gradient(180deg, rgba(223, 236, 229, 0.92), rgba(247, 249, 248, 0.96)),
+          #f5f7f6;
+      }
+
+      main {
+        padding: 12px;
+        gap: 12px;
+      }
+
+      header {
+        gap: 12px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .tool {
+        padding: 10px;
+        border-color: rgba(148, 163, 184, 0.28);
+        background: rgba(255, 255, 255, 0.72);
+        box-shadow: 0 18px 42px rgba(22, 48, 43, 0.10);
+        backdrop-filter: blur(16px);
+      }
+
+      .form-panel,
+      .step-panel,
+      .retry-panel,
+      .api-details,
+      .proxy-card,
+      .result,
+      .flow-details {
+        border-color: rgba(148, 163, 184, 0.26);
+        background: rgba(255, 255, 255, 0.78);
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.045);
+        backdrop-filter: blur(14px);
+      }
+
+      .form-panel {
+        padding: 12px;
+      }
+
+      .link-config-row {
+        grid-template-columns: minmax(88px, 0.55fr) minmax(160px, 0.86fr) minmax(260px, 1.55fr);
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .proxy-mode-options {
+        display: grid;
+        grid-template-columns: max-content max-content;
+        gap: 6px 8px;
+        align-items: end;
+      }
+
+      .proxy-mode-options .proxy-hint {
+        grid-column: 1 / -1;
+        min-height: 16px;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .checkbox-label {
+        min-height: 34px;
+        padding: 0 10px;
+        border: 1px solid rgba(148, 163, 184, 0.26);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.72);
+        white-space: nowrap;
+      }
+
+      .proxy-mode-options .checkbox-label:has(input:checked) {
+        border-color: rgba(12, 122, 82, 0.3);
+        background: #eaf8ef;
+        color: var(--accent-dark);
+      }
+
+      .grid {
+        gap: 10px;
+      }
+
+      textarea,
+      input,
+      select {
+        min-height: 38px;
+        background: rgba(255, 255, 255, 0.9);
+      }
+
+      textarea {
+        min-height: 120px;
+      }
+
+      button,
+      a.button {
+        min-height: 38px;
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.58) inset;
+      }
+
+      .quick-actions button {
+        min-height: 36px;
+      }
+
+      .quick-proxy-card {
+        padding: 8px;
+      }
+
+      .proxy-card-head {
+        margin-bottom: 6px;
+      }
+
+      .proxy-card input,
+      .quick-proxy-card input {
+        min-height: 34px;
+      }
+
+      .flow-details > summary {
+        min-height: 38px;
+        background: rgba(248, 250, 249, 0.82);
+      }
+
+      .flow-details.has-current > summary {
+        border-left: 4px solid #2563eb;
+        background: #f3f8ff;
+      }
+
+      .flow-details.has-current[data-status="done"] > summary {
+        border-left-color: var(--accent);
+        background: #f1fbf5;
+      }
+
+      .flow-details.has-current[data-status="error"] > summary {
+        border-left-color: var(--danger);
+        background: #fff5f3;
+      }
+
+      .step-grid {
+        gap: 7px;
+        padding: 8px 10px 10px;
+      }
+
+      .step-card {
+        cursor: pointer;
+        grid-template-columns: minmax(150px, 0.78fr) minmax(220px, 1.28fr) minmax(126px, 0.72fr);
+        border-color: rgba(148, 163, 184, 0.24);
+        background: rgba(255, 255, 255, 0.78);
+        transition:
+          border-color 0.16s ease,
+          background 0.16s ease,
+          box-shadow 0.16s ease,
+          transform 0.16s ease;
+      }
+
+      .step-card:hover {
+        border-color: rgba(37, 99, 235, 0.22);
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.045);
+      }
+
+      .step-card:focus-visible {
+        outline: 3px solid rgba(37, 99, 235, 0.18);
+        outline-offset: 2px;
+      }
+
+      .step-card.current {
+        border-color: rgba(234, 88, 12, 0.4);
+        border-left-color: #ea580c;
+        background: #fff7ed;
+        box-shadow:
+          0 10px 24px rgba(234, 88, 12, 0.12),
+          inset 0 0 0 1px rgba(234, 88, 12, 0.1);
+      }
+
+      .step-card.current .step-index {
+        background: #ffedd5;
+        color: #c2410c;
+      }
+
+      .step-card-head,
+      .step-message,
+      .step-card-meta {
+        padding: 9px 12px;
+      }
+
+      .step-log-details {
+        background: #f7faf8;
+      }
+
+      .step-log-details > summary {
+        min-height: 24px;
+        padding: 4px 12px;
+        background: rgba(242, 247, 244, 0.74);
+      }
+
+      .step-log-summary {
+        min-height: 16px;
+      }
+
+      .step-log-count {
+        color: #0c7a52;
+        font-size: 11px;
+      }
+
+      .step-log-details > summary::after {
+        font-size: 11px;
+      }
+
+      .step-log-list {
+        padding: 6px 12px 8px;
+      }
+
+      .step-log-empty {
+        padding: 6px 8px;
+      }
+
+      @media (max-width: 1180px) {
+        .tool {
+          grid-template-columns: 1fr;
+        }
+
+        .step-top {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1249,7 +2613,7 @@
       <header>
         <div class="header-copy">
           <h1>本地支付长链生成</h1>
-          <p>双代理分段输入，实时查看当前步骤，前端直接展开 PP 链提取原理。</p>
+          <p>双代理分段输入，右侧集中查看运行概览、最终结果和关键步骤日志。</p>
         </div>
         <div class="header-email">
           <div id="detectedEmailBanner" class="detected-email-banner empty" aria-live="polite">
@@ -1291,45 +2655,36 @@
               <div id="tokenMeta" class="token-meta"></div>
             </div>
 
+            <input type="hidden" id="linkType" value="paypal" />
+            <input type="hidden" id="checkoutMode" value="custom" />
+
+            <div class="link-config-row">
+              <div>
+                <label>链类型</label>
+                <div class="link-type-pill" aria-label="PP 链">PP 链</div>
+              </div>
+              <div>
+                <label for="approveProxyRegion">Approve 出口代理</label>
+                <select id="approveProxyRegion">
+                  <option value="JP" selected>日本 JP（默认）</option>
+                  <option value="US">美国 US</option>
+                  <option value="DE">德国 DE</option>
+                </select>
+              </div>
+              <div class="checkbox-field proxy-mode-options">
+                <label class="checkbox-label" for="allJpProxy">
+                  <input id="allJpProxy" type="checkbox" checked />
+                  <span>全程 JP 代理</span>
+                </label>
+                <label class="checkbox-label" for="allNoProxy">
+                  <input id="allNoProxy" type="checkbox" />
+                  <span>全程无代理</span>
+                </label>
+                <span id="proxyModeHint" class="proxy-hint">默认全程 JP。日本服务器可勾选全程无代理，三段均直连。</span>
+              </div>
+            </div>
+
             <div class="grid">
-              <div>
-                <label for="linkType">链类型</label>
-                <select id="linkType">
-                  <option value="hosted">支付长链（默认美国）</option>
-                  <option value="paypal" selected>PP 链提取（美国账单）</option>
-                  <option value="gopay">GoPay 链提取（印尼地址）</option>
-                </select>
-              </div>
-              <div>
-                <label for="checkoutMode">支付页模式</label>
-                <select id="checkoutMode">
-                  <option value="hosted" selected>hosted: pay.openai.com 长链</option>
-                </select>
-              </div>
-              <div>
-                <label for="paymentStrategy">PP 策略组</label>
-                <select id="paymentStrategy">
-                  <option value="de_eur" selected>DE 一致画像（DE/EUR/de-DE/Berlin，参考 oaipay）</option>
-                  <option value="de_billing_us_provider">DE 账单 + DE checkout + US provider</option>
-                  <option value="jp_de_billing">JP checkout + DE 账单 + DE provider</option>
-                  <option value="jp_us">JP checkout + US 账单（保日区优惠）</option>
-                </select>
-              </div>
-              <div>
-                <label for="paymentLocale">支付页语言</label>
-                <select id="paymentLocale">
-                  <option value="en" selected>英文</option>
-                  <option value="zh-CN">简体中文</option>
-                  <option value="zh-TW">繁体中文</option>
-                  <option value="ja">日文</option>
-                  <option value="ko">韩文</option>
-                  <option value="de">德文</option>
-                  <option value="fr">法文</option>
-                  <option value="es">西班牙文</option>
-                  <option value="id">印尼文</option>
-                  <option value="pt-BR">葡萄牙文</option>
-                </select>
-              </div>
               <div>
                 <label for="billingCountry">地区</label>
                 <select id="billingCountry"></select>
@@ -1340,26 +2695,14 @@
               </div>
               <div>
                 <label for="maxRetries">失败重试次数</label>
-                <input id="maxRetries" type="number" min="1" max="20" step="1" value="5" />
-              </div>
-              <div>
-                <label for="approveRetries">approve 串行兜底次数</label>
-                <input id="approveRetries" type="number" min="1" max="30" step="1" value="10" />
-              </div>
-              <div>
-                <label for="approvePoolSize">approve 并发池容量</label>
-                <input id="approvePoolSize" type="number" min="1" max="100" step="1" value="50" />
-              </div>
-              <div>
-                <label for="approvePoolMaxAttempts">approve 池最大次数</label>
-                <input id="approvePoolMaxAttempts" type="number" min="50" max="5000" step="50" value="3000" />
+                <input id="maxRetries" type="number" min="1" max="20" step="1" value="1" />
               </div>
             </div>
 
             <div class="proxy-card quick-proxy-card">
               <div class="proxy-card-head">
                 <strong>快捷代理</strong>
-                <span>填一个基准代理后，自动生成 checkout=JP、provider=US。清空后可手动填写下面两个代理。</span>
+                <span>填一个基准代理后：checkout 固定 JP；provider 默认 DE（随地区）；approve 默认 JP。勾选全程 JP 后三段统一日本。</span>
               </div>
               <input
                 id="quickProxy"
@@ -1378,7 +2721,7 @@
               <div id="checkoutProxyCard" class="proxy-card">
                 <div class="proxy-card-head">
                   <strong>Checkout 代理</strong>
-                  <span>用于 ChatGPT checkout 与后续 approve。PP 默认建议日本出口。</span>
+                  <span>固定日本出口创建 checkout（仅 JP 有优惠）。PP 模式下不可改。</span>
                 </div>
                 <input
                   id="checkoutProxy"
@@ -1396,7 +2739,7 @@
               <div id="providerProxyCard" class="proxy-card">
                 <div class="proxy-card-head">
                   <strong>Provider 代理</strong>
-                  <span>用于 Stripe init、payment method、confirm 与外部跳转。PP 默认建议美国出口。</span>
+                  <span>用于 Stripe init、payment method、confirm 与外部跳转。默认随地区走 DE/US；勾选全程 JP 后改为日本。</span>
                 </div>
                 <input
                   id="providerProxy"
@@ -1414,6 +2757,40 @@
             <details>
               <summary>高级选项</summary>
               <div class="grid">
+                <div class="checkbox-field">
+                  <label class="checkbox-label" for="fetchBaToken">
+                    <input id="fetchBaToken" type="checkbox" />
+                    <span>获取 BA Token</span>
+                  </label>
+                  <span class="proxy-hint">默认关闭：拿到 pm-redirects 即成功，不再解析到 paypal.com/agreements。勾选后才会继续跟到 BA 长链。approve 固定按 1→2→4→8→16→30 路阶梯升级。</span>
+                </div>
+                <div>
+                  <label for="paymentLocale">支付页语言</label>
+                  <select id="paymentLocale">
+                    <option value="de" selected>德文</option>
+                    <option value="en">英文</option>
+                    <option value="zh-CN">简体中文</option>
+                    <option value="zh-TW">繁体中文</option>
+                    <option value="ja">日文</option>
+                    <option value="ko">韩文</option>
+                    <option value="fr">法文</option>
+                    <option value="es">西班牙文</option>
+                    <option value="id">印尼文</option>
+                    <option value="pt-BR">葡萄牙文</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="approveRetries">approve 串行兜底次数</label>
+                  <input id="approveRetries" type="number" min="1" max="30" step="1" value="10" />
+                </div>
+                <div>
+                  <label for="approvePoolSize">approve 最大并发档</label>
+                  <input id="approvePoolSize" type="number" min="1" max="100" step="1" value="30" />
+                </div>
+                <div>
+                  <label for="approvePoolMaxAttempts">approve 池最大次数</label>
+                  <input id="approvePoolMaxAttempts" type="number" min="1" max="5000" step="1" value="30" />
+                </div>
                 <div>
                   <label for="stripeKey">Stripe Publishable Key</label>
                   <input id="stripeKey" placeholder="pk_live_..." />
@@ -1462,9 +2839,14 @@
                 <div id="attemptSub" class="metric-sub">自动重试状态</div>
               </div>
               <div class="metric-card">
-                <div class="metric-label">approve 并发</div>
-                <div id="approveCountMetric" class="metric-value">0</div>
-                <div id="approvePoolSub" class="metric-sub">池 0 路 / 上限 0 次</div>
+                <div class="metric-label">当前步骤</div>
+                <div id="currentStepNumberMetric" class="metric-value">--</div>
+                <div id="currentStepSub" class="metric-sub">等待开始</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">approve 尝试</div>
+                <div id="approveCountMetric" class="metric-value">--</div>
+                <div id="approvePoolSub" class="metric-sub">等待开始</div>
               </div>
               <div class="metric-card">
                 <div class="metric-label">approve_result</div>
@@ -1484,27 +2866,29 @@
             </details>
           </div>
 
-          <div class="api-panel">
-            <div>
-              <label style="margin-bottom: 4px">对外接口用法</label>
-              <p>给外部程序对接时，直接调用 <code>/getPayPal_link</code>。内部会复用当前 PP 提取主流程；只有拿到 PayPal 授权长链时才返回 <code>success=true</code>。</p>
-            </div>
-            <div class="row">
-              <label>请求地址</label>
-              <code>POST /getPayPal_link</code>
-            </div>
-            <div class="row">
-              <label>请求示例</label>
-              <code>{
+          <details class="api-details">
+            <summary>对外接口用法</summary>
+            <div class="api-panel">
+              <div>
+                <label style="margin-bottom: 4px">对外接口用法</label>
+                <p>给外部程序对接时，直接调用 <code>/getPayPal_link</code>。内部会复用当前 PP 提取主流程；只有拿到 PayPal 授权长链时才返回 <code>success=true</code>。</p>
+              </div>
+              <div class="row">
+                <label>请求地址</label>
+                <code>POST /getPayPal_link</code>
+              </div>
+              <div class="row">
+                <label>请求示例</label>
+                <code>{
   "accessToken": "{\"access_token\":\"eyJ...\"}",
   "maxRetries": 5,
   "checkout_proxy": "socks5://bj2m1188418-region-jp:nanno2@us.cliproxy.io:3010",
   "provider_proxy": "socks5://bj2m1188418-region-US:nanno2@us.cliproxy.io:3010"
 }</code>
-            </div>
-            <div class="row">
-              <label>成功返回</label>
-              <code>{
+              </div>
+              <div class="row">
+                <label>成功返回</label>
+                <code>{
   "success": true,
   "code": "SUCCESS",
   "message": "第 1 / 5 轮成功生成 PP 链。",
@@ -1512,10 +2896,10 @@
   "attempt_count": 1,
   "max_attempts": 5
 }</code>
-            </div>
-            <div class="row">
-              <label>失败返回</label>
-              <code>{
+              </div>
+              <div class="row">
+                <label>失败返回</label>
+                <code>{
   "success": false,
   "code": "PAYPAL_LINK_NOT_FOUND",
   "message": "provider 提取失败，已回退 hosted。",
@@ -1526,8 +2910,9 @@
     { "attempt": 1, "ok": false, "error": "..." }
   ]
 }</code>
+              </div>
             </div>
-          </div>
+          </details>
         </div>
 
         <div
@@ -1543,27 +2928,37 @@
           <div class="guide-panel">
             <div>
               <label style="margin-bottom: 4px">PP 链原理概览</label>
-              <p id="guideSummary">会先用 checkout 代理创建 checkout，再用 provider 代理进入 Stripe，approve 回到 checkout 代理，最后解析 PayPal 真实 redirect URL。失败会自动重试，默认 5 轮。</p>
+              <p id="guideSummary">checkout 固定日本；provider 默认随 DE 账单走德国出口；approve 默认日本。可勾选全程 JP 让三段统一走日本代理。</p>
             </div>
             <button id="showPrincipleInline" class="secondary" type="button">展开详细原理</button>
           </div>
 
-          <div id="logPanel" class="log-panel" aria-live="polite">
+          <div id="logPanel" class="log-panel archive-panel" aria-live="polite">
             <div class="log-head">
-              <span>实时步骤日志</span>
+              <span>全部原始日志归档</span>
               <button id="clearLog" class="secondary" type="button">清空日志</button>
             </div>
             <div id="logList" class="log-list"></div>
           </div>
 
           <div id="result" class="result">
+            <div id="resultSuccessBanner" class="result-success-banner" hidden>成功提取！</div>
             <div class="result-actions">
-              <a id="openLink" class="button blue disabled" target="_blank" rel="noopener">跳转长链</a>
-              <button id="copy" class="secondary" type="button" disabled>复制长链</button>
+              <a id="openLink" class="button blue disabled" target="_blank" rel="noopener">跳转主链接</a>
+              <a id="openPmRedirect" class="button secondary disabled" target="_blank" rel="noopener">打开中转链</a>
+              <button id="copy" class="secondary" type="button" disabled>复制主链接</button>
             </div>
             <div class="row">
-              <label>长链</label>
-              <code id="longUrl"></code>
+              <label id="primaryLinkLabel">主结果链接（点击复制）</label>
+              <code id="longUrl" class="link-display empty" title="点击复制"></code>
+            </div>
+            <div class="row">
+              <label>Stripe 中转地址（pm-redirects）</label>
+              <code id="pmRedirectUrl" class="link-display empty" title="点击复制"></code>
+            </div>
+            <div id="paypalBaRow" class="row" hidden>
+              <label>PayPal BA 链接</label>
+              <code id="paypalBaUrl" class="link-display empty" title="点击复制"></code>
             </div>
             <div class="row">
               <label>CS ID / 地区 / 币种</label>
@@ -1830,22 +3225,35 @@
         },
       ];
 
+      const STEP_LOG_FALLBACK_GROUP = {
+        retry: "result",
+        fallback: "result",
+        done: "result",
+        pause: "result",
+        terminate: "result",
+        proxy_check: "prepare",
+        input: "prepare",
+      };
+
       const $ = (id) => document.getElementById(id);
       const CHATGPT_SESSION_URL = "https://chatgpt.com/api/auth/session";
-      const DEFAULT_QUICK_PROXY = "http://bj2m1188418-region-US:nanno2@127.0.0.1:3010";
+      const DEFAULT_QUICK_PROXY = "http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010";
       const DEFAULT_CHECKOUT_PROXY = "http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010";
-      const DEFAULT_PROVIDER_PROXY = "http://bj2m1188418-region-US:nanno2@127.0.0.1:3010";
+      const DEFAULT_PROVIDER_PROXY = "http://bj2m1188418-region-DE:nanno2@127.0.0.1:3010";
+      const PAYPAL_COUNTRIES = [
+        ["DE", "德国 DE", "EUR"],
+        ["US", "美国 US", "USD"],
+      ];
+      const DEFAULT_BILLING_COUNTRY = "DE";
+      const LINK_TIMEOUT_MS = 65000;
       const QUICK_PROXY_REGION_PATTERN = /region-([a-z]{2})/i;
-      const DEFAULT_MAX_RETRIES = 5;
+      const DEFAULT_MAX_RETRIES = 1;
       const DEFAULT_APPROVE_RETRIES = 10;
       const DEFAULT_APPROVE_POOL_SIZE = 30;
-      const DEFAULT_APPROVE_POOL_MAX_ATTEMPTS = 600;
-      const PAYMENT_STRATEGIES = {
-        de_eur: { billing: "DE", locale: "de", checkout: "DE", provider: "DE" },
-        de_billing_us_provider: { billing: "DE", locale: "de", checkout: "DE", provider: "US" },
-        jp_de_billing: { billing: "DE", locale: "de", checkout: "JP", provider: "DE" },
-        jp_us: { billing: "US", locale: "en", checkout: "JP", provider: "US" },
-      };
+      const DEFAULT_APPROVE_POOL_MAX_ATTEMPTS = 30;
+      function paypalPaymentStrategy() {
+        return $("billingCountry").value === "DE" ? "jp_de" : "jp_us";
+      }
       const DEFAULT_PANE_RATIO = 0.5;
       const MIN_PANE_RATIO = 0.28;
       const MAX_PANE_RATIO = 0.72;
@@ -1862,6 +3270,7 @@
       const copySessionUrlButton = $("copySessionUrl");
       const copyButton = $("copy");
       const openLink = $("openLink");
+      const openPmRedirect = $("openPmRedirect");
       const statusLine = $("status");
       const principleModal = $("principleModal");
       const toolLayout = document.querySelector(".tool");
@@ -1881,6 +3290,11 @@
       let runMetrics = null;
       let elapsedTimer = null;
       let approveCounterAnimation = null;
+      let lastPmRedirectUrl = "";
+      let currentResultData = null;
+      const stepLogStore = new Map();
+      const stepLogOpenState = new Map();
+      const STEP_LOG_LIMIT = 80;
 
       function setStatus(text, isError = false) {
         statusLine.textContent = text;
@@ -1978,18 +3392,75 @@
         return Math.max(50, Math.min(parsed, 5000));
       }
 
-      function currentPaymentStrategyProfile() {
-        return PAYMENT_STRATEGIES[$("paymentStrategy").value] || PAYMENT_STRATEGIES.jp_us;
+      function isAllJpProxy() {
+        return Boolean($("allJpProxy")?.checked) && !isAllNoProxy();
       }
 
-      function applyPaymentStrategyFields() {
-        if ($("linkType").value !== "paypal") return;
-        const profile = currentPaymentStrategyProfile();
-        $("billingCountry").value = profile.billing;
-        $("paymentLocale").value = profile.locale;
-        applyQuickProxyState();
-        syncProviderProxyForBillingCountry();
+      function isAllNoProxy() {
+        return Boolean($("allNoProxy")?.checked);
+      }
+
+      function providerRegionForBilling(billing) {
+        if (isAllNoProxy()) return "direct";
+        if (isAllJpProxy()) return "JP";
+        return billing === "DE" ? "DE" : "US";
+      }
+
+      function approveRegionForRequest() {
+        if (isAllNoProxy()) return "direct";
+        return isAllJpProxy() ? "JP" : ($("approveProxyRegion").value || "JP");
+      }
+
+      function syncPaypalProxyFields() {
+        const billing = $("billingCountry").value || DEFAULT_BILLING_COUNTRY;
+        $("paymentLocale").value = billing === "DE" ? "de" : "en";
+        if (isAllNoProxy()) {
+          $("checkoutProxy").value = "";
+          $("providerProxy").value = "";
+        } else {
+          const quickProxy = $("quickProxy").value.trim();
+          const base = quickProxy || DEFAULT_QUICK_PROXY;
+          $("checkoutProxy").value = proxyForRegion(base, "JP");
+          $("providerProxy").value = proxyForRegion(base, providerRegionForBilling(billing));
+        }
+        $("checkoutProxy").disabled = true;
+        $("checkoutProxyCard").classList.add("disabled");
+        updateProxyModeUi();
         updateCurrency();
+      }
+
+      function providerProxyHintText() {
+        if (isAllNoProxy()) return "全程无代理：checkout / provider / approve 均直连本机出口。";
+        if (isAllJpProxy()) return "全程 JP 已启用：provider 阶段也走日本出口。";
+        return "provider 阶段随地区走 DE/US 出口。";
+      }
+
+      function updateProxyModeUi() {
+        const allJp = isAllJpProxy();
+        const allDirect = isAllNoProxy();
+        const approveSelect = $("approveProxyRegion");
+        if (allDirect) {
+          approveSelect.disabled = true;
+        } else if (allJp) {
+          approveSelect.value = "JP";
+          approveSelect.disabled = true;
+        } else {
+          approveSelect.disabled = false;
+        }
+        const quickCard = document.querySelector(".quick-proxy-card");
+        const quickInput = $("quickProxy");
+        if (quickCard) quickCard.classList.toggle("disabled", allDirect);
+        if (quickInput) quickInput.disabled = allDirect;
+        $("providerProxy").disabled = allDirect || Boolean($("quickProxy").value.trim());
+        $("providerProxyCard").classList.toggle("disabled", allDirect || Boolean($("quickProxy").value.trim()));
+        const hint = $("proxyModeHint");
+        if (hint) {
+          hint.textContent = allDirect
+            ? "已启用全程无代理：适合日本服务器部署，checkout / provider / approve 均不走代理。"
+            : allJp
+              ? "已启用全程 JP 代理：checkout / provider / approve 三段均走日本出口。"
+              : "未勾选时 provider 随地区走 US/DE，approve 走上方选择。";
+        }
       }
 
       function clampApproveRetries(value) {
@@ -2109,10 +3580,18 @@
           provider_proxy: DEFAULT_PROVIDER_PROXY,
           max_retries: DEFAULT_MAX_RETRIES,
           approve_retries: DEFAULT_APPROVE_RETRIES,
-          approve_pool_size: DEFAULT_APPROVE_POOL_SIZE,
+          approve_pool_size: 30,
           approve_pool_max_attempts: DEFAULT_APPROVE_POOL_MAX_ATTEMPTS,
-          payment_strategy: "de_eur",
+          approve_proxy_region: "JP",
+          all_jp_proxy: true,
+          all_no_proxy: false,
+          fetch_ba_token: false,
+          billing_country: DEFAULT_BILLING_COUNTRY,
         };
+      }
+
+      function fetchBaTokenEnabled() {
+        return Boolean($("fetchBaToken")?.checked);
       }
 
       // 快捷代理只负责派生 checkout/provider 两段代理，避免每次重复填写。
@@ -2124,24 +3603,23 @@
       }
 
       function applyQuickProxyState() {
+        if (isAllNoProxy()) {
+          syncPaypalProxyFields();
+          $("quickProxyHint").textContent = "全程无代理已启用，快捷代理与三段出口均不使用。";
+          return;
+        }
         const quickProxy = $("quickProxy").value.trim();
         const quickEnabled = Boolean(quickProxy);
-        const providerDisabledByType = $("linkType").value === "hosted";
+        const billing = $("billingCountry").value || DEFAULT_BILLING_COUNTRY;
+        const providerRegion = providerRegionForBilling(billing);
+        const approveRegion = approveRegionForRequest();
 
-        if (quickEnabled) {
-          const profile = currentPaymentStrategyProfile();
-          $("checkoutProxy").value = deriveRegionProxy(quickProxy, profile.checkout);
-          $("providerProxy").value = deriveRegionProxy(quickProxy, profile.provider);
-        }
-
-        $("checkoutProxy").disabled = quickEnabled;
-        $("providerProxy").disabled = quickEnabled || providerDisabledByType;
-        $("checkoutProxyCard").classList.toggle("disabled", quickEnabled);
-        $("providerProxyCard").classList.toggle("disabled", quickEnabled || providerDisabledByType);
-        const profile = currentPaymentStrategyProfile();
+        syncPaypalProxyFields();
+        $("providerProxy").disabled = quickEnabled;
+        $("providerProxyCard").classList.toggle("disabled", quickEnabled);
         $("quickProxyHint").textContent = quickEnabled
-          ? `已按策略自动生成 checkout=${profile.checkout}、provider=${profile.provider}。清空快捷代理后，可手动填写下面两个代理。`
-          : "默认按 region-XX 中的国家简称自动替换。";
+          ? `checkout=JP，provider=${providerRegion}，approve=${approveRegion}${isAllJpProxy() ? "（全程 JP）" : ""}。`
+          : "PP 模式：checkout 固定日本；可选手动填写 provider 代理。";
       }
 
       function applyProxyConfig(config) {
@@ -2153,9 +3631,13 @@
         $("approveRetries").value = String(clampApproveRetries(merged.approve_retries));
         $("approvePoolSize").value = String(clampApprovePoolSize(merged.approve_pool_size));
         $("approvePoolMaxAttempts").value = String(clampApprovePoolMaxAttempts(merged.approve_pool_max_attempts));
-        $("paymentStrategy").value = merged.payment_strategy || "jp_us";
+        $("approveProxyRegion").value = merged.approve_proxy_region || "JP";
+        $("allNoProxy").checked = Boolean(merged.all_no_proxy);
+        $("allJpProxy").checked = merged.all_no_proxy ? false : merged.all_jp_proxy !== false;
+        $("fetchBaToken").checked = Boolean(merged.fetch_ba_token);
+        if (merged.billing_country) $("billingCountry").value = merged.billing_country;
         applyQuickProxyState();
-        applyPaymentStrategyFields();
+        syncPaypalProxyFields();
       }
 
       function newRetryState(maxAttempts = clampMaxRetries($("maxRetries").value)) {
@@ -2324,8 +3806,7 @@
         }
       }
 
-      function defaultProxyResultText(stage, linkType = $("linkType").value) {
-        if (stage === "provider" && linkType === "hosted") return "hosted 模式不使用 provider 代理。";
+      function defaultProxyResultText(stage) {
         return `尚未检测 ${stage} 代理。`;
       }
 
@@ -2509,13 +3990,18 @@
 
       function fillCountries() {
         const select = $("billingCountry");
+        const previous = select.value;
         select.innerHTML = "";
-        for (const [code, label] of COUNTRIES) {
+        for (const [code, label] of PAYPAL_COUNTRIES) {
           const option = document.createElement("option");
           option.value = code;
           option.textContent = label;
-          if (code === "US") option.selected = true;
           select.appendChild(option);
+        }
+        if (PAYPAL_COUNTRIES.some(([code]) => code === previous)) {
+          select.value = previous;
+        } else {
+          select.value = DEFAULT_BILLING_COUNTRY;
         }
       }
 
@@ -2543,10 +4029,19 @@
           maxAttempts: 0,
           approveAttempts: 0,
           approveRendered: 0,
-          approvePoolSize: clampApprovePoolSize($("approvePoolSize")?.value || DEFAULT_APPROVE_POOL_SIZE),
+          approvePoolSize: 1,
           approvePoolMaxAttempts: clampApprovePoolMaxAttempts($("approvePoolMaxAttempts")?.value || DEFAULT_APPROVE_POOL_MAX_ATTEMPTS),
+          approveEscalationTier: 0,
+          approveEscalationTotal: 6,
           approveResult: "pending",
+          billingSnapshot: null,
+          pmRedirectUrl: "",
+          paypalBaUrl: "",
+          stripeRedirectUrl: "",
+          providerRedirectUrl: "",
+          primaryUrl: "",
           finalOk: null,
+          pmEarlyFinished: false,
         };
       }
 
@@ -2629,6 +4124,18 @@
         $("approveStateSub").textContent = detail || (lower === "approved" ? "已命中，等待 redirect" : lower === "pending" ? "等待 approve 结果" : "继续观察后续轮询");
       }
 
+      function formatApproveAttemptLabel(tier, poolSize) {
+        const tierNo = Math.max(1, Number.parseInt(String(tier || ""), 10) || 1);
+        const concurrency = Math.max(1, Number.parseInt(String(poolSize || ""), 10) || 1);
+        const attemptPrefix = tierNo === 1 ? "首次尝试" : `第${tierNo}次尝试`;
+        return `${attemptPrefix} ${tierNo}档 ${concurrency}并发`;
+      }
+
+      function formatApproveAttemptShort(tier) {
+        const tierNo = Math.max(1, Number.parseInt(String(tier || ""), 10) || 1);
+        return tierNo === 1 ? "首次" : `第${tierNo}次`;
+      }
+
       function refreshRunOverview() {
         const metrics = ensureRunMetrics();
         const hasStarted = Boolean(metrics.startedAt);
@@ -2640,8 +4147,272 @@
         const attemptText = metrics.maxAttempts ? `${metrics.attempt || 0}/${metrics.maxAttempts}` : `${metrics.attempt || 0}/0`;
         updateMetricText("attemptMetric", attemptText, false);
         $("attemptSub").textContent = metrics.attempt ? `第 ${metrics.attempt} 轮执行中` : "自动重试状态";
-        $("approvePoolSub").textContent = `池 ${metrics.approvePoolSize || 0} 路 / 上限 ${metrics.approvePoolMaxAttempts || 0} 次`;
+        const tierNo = metrics.approveEscalationTier || (hasStarted ? 1 : 0);
+        const poolSize = metrics.approvePoolSize || 1;
+        if (tierNo > 0) {
+          $("approvePoolSub").textContent = formatApproveAttemptLabel(tierNo, poolSize);
+          updateMetricText("approveCountMetric", formatApproveAttemptShort(tierNo), false);
+        } else {
+          $("approvePoolSub").textContent = "等待开始";
+          updateMetricText("approveCountMetric", "--", false);
+        }
+        updateCurrentStepMetric();
         setApproveMetricState(metrics.approveResult || "pending");
+      }
+
+      function preferredPrimaryLinkEnabled() {
+        return fetchBaTokenEnabled();
+      }
+
+      function stepGroupKeyByStep(step) {
+        const normalized = String(step || "");
+        const group = groupForStep(normalized);
+        if (group) return group.key;
+        return STEP_LOG_FALLBACK_GROUP[normalized] || (currentStepKey ? groupForStep(currentStepKey)?.key : "") || "result";
+      }
+
+      function resetStepLogState() {
+        stepLogStore.clear();
+        stepLogOpenState.clear();
+        for (const group of visibleFlowGroups()) {
+          stepLogStore.set(group.key, []);
+        }
+      }
+
+      function pushStepLog(item) {
+        const key = stepGroupKeyByStep(item?.step || "");
+        const current = stepLogStore.get(key) || [];
+        current.push(item);
+        if (current.length > STEP_LOG_LIMIT) current.splice(0, current.length - STEP_LOG_LIMIT);
+        stepLogStore.set(key, current);
+      }
+
+      function currentBillingSummary() {
+        const snapshot = ensureRunMetrics().billingSnapshot;
+        if (!snapshot) return "";
+        const name = snapshot.name || "";
+        const line1 = snapshot.line1 || "";
+        const city = snapshot.city || "";
+        const postal = snapshot.postalCode || "";
+        const country = snapshot.country || "";
+        return [country, name, [line1, postal, city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+      }
+
+      function normalizeUrl(value) {
+        return String(value || "").trim();
+      }
+
+      function isPmRedirectUrl(url) {
+        return normalizeUrl(url).includes("pm-redirects.stripe.com");
+      }
+
+      function isPaypalBaUrl(url) {
+        return normalizeUrl(url).includes("paypal.com/agreements/approve");
+      }
+
+      function urlHost(url) {
+        const value = normalizeUrl(url);
+        if (!value) return "";
+        try {
+          return new URL(value).host;
+        } catch {
+          return "";
+        }
+      }
+
+      function truncateMiddle(value, left = 32, right = 18) {
+        const text = String(value || "");
+        if (!text || text.length <= left + right + 3) return text;
+        return `${text.slice(0, left)}...${text.slice(-right)}`;
+      }
+
+      function primaryKindLabel(kind) {
+        if (kind === "pm") return "主链：Stripe 中转";
+        if (kind === "ba") return "主链：PayPal BA";
+        if (kind === "hosted") return "主链：Hosted 回退";
+        return "";
+      }
+
+      function resolveResultUrls(data = currentResultData || {}) {
+        const metrics = ensureRunMetrics();
+        const rawLongUrl = normalizeUrl(data.long_url || metrics.paypalBaUrl || "");
+        const pmFromResult = normalizeUrl(data.pm_redirect_url || metrics.pmRedirectUrl || "");
+        const stripeRedirect = normalizeUrl(data.stripe_redirect_url || metrics.stripeRedirectUrl || "");
+        const pmUrl =
+          (isPmRedirectUrl(pmFromResult) ? pmFromResult : "") ||
+          (isPmRedirectUrl(stripeRedirect) ? stripeRedirect : "") ||
+          (isPmRedirectUrl(lastPmRedirectUrl) ? lastPmRedirectUrl : "");
+        const baUrl = isPaypalBaUrl(rawLongUrl) ? rawLongUrl : "";
+        const hostedUrl = rawLongUrl && !baUrl ? rawLongUrl : "";
+        const primaryUrl = preferredPrimaryLinkEnabled() ? (baUrl || pmUrl || hostedUrl) : (pmUrl || baUrl || hostedUrl);
+        const primaryKind = primaryUrl
+          ? primaryUrl === pmUrl
+            ? "pm"
+            : primaryUrl === baUrl
+              ? "ba"
+              : "hosted"
+          : "";
+        return {
+          primaryUrl,
+          primaryKind,
+          pmUrl,
+          baUrl,
+          hostedUrl,
+        };
+      }
+
+      function setCodeValue(id, value, emptyText = "暂无", { hero = false } = {}) {
+        const node = $(id);
+        if (!node) return;
+        const text = String(value || "").trim();
+        node.textContent = text || emptyText;
+        node.classList.toggle("empty", !text);
+        node.classList.toggle("hero-link", hero && Boolean(text));
+        node.classList.toggle("pm-link", hero && id === "pmRedirectUrl" && Boolean(text));
+        node.title = text ? "点击复制完整链接" : "";
+      }
+
+      function currentStepNumberParts() {
+        const groups = visibleFlowGroups();
+        const currentGroup = groupForStep(currentStepKey);
+        if (!currentGroup) {
+          return { value: "--", sub: "等待开始" };
+        }
+        const index = groups.findIndex((group) => group.key === currentGroup.key);
+        if (index < 0) {
+          return { value: "--", sub: "等待开始" };
+        }
+        return {
+          value: `${index + 1}/${groups.length}`,
+          sub: currentGroup.label || "进行中",
+        };
+      }
+
+      function isExtractionSuccess(data = currentResultData || {}) {
+        const urls = resolveResultUrls(data);
+        if (urls.pmUrl && !fetchBaTokenEnabled()) return true;
+        if (urls.baUrl && fetchBaTokenEnabled()) return true;
+        return Boolean(data.ok) && Boolean(urls.primaryUrl) && !data.fallback;
+      }
+
+      function updateResultSuccessState(data = currentResultData || {}) {
+        const metrics = ensureRunMetrics();
+        const success = isExtractionSuccess(data) || Boolean(metrics.pmEarlyFinished && (metrics.pmRedirectUrl || lastPmRedirectUrl));
+        const banner = $("resultSuccessBanner");
+        if (banner) banner.hidden = !success;
+        const tag = $("overviewSuccessTag");
+        if (tag) tag.hidden = !success;
+        const overview = $("overviewFinalLink");
+        if (overview) overview.classList.toggle("is-success", success);
+      }
+
+      function updateCurrentStepMetric() {
+        const parts = currentStepNumberParts();
+        updateMetricText("currentStepNumberMetric", parts.value, false);
+        const subNode = $("currentStepSub");
+        if (subNode) subNode.textContent = parts.sub;
+      }
+
+      function toggleResultRow(id, show) {
+        const node = $(id);
+        if (node) node.hidden = !show;
+      }
+
+      function arrangeUiPanels() {
+        const rightColumn = document.querySelector(".right-column");
+        const stepPanel = document.querySelector(".step-panel");
+        const resultPanel = $("result");
+        const flowDetails = document.querySelector(".flow-details");
+        if (rightColumn && stepPanel && stepPanel.parentElement !== rightColumn) {
+          rightColumn.insertBefore(stepPanel, rightColumn.firstElementChild);
+        }
+        if (stepPanel && resultPanel && flowDetails && resultPanel.parentElement !== stepPanel) {
+          stepPanel.insertBefore(resultPanel, flowDetails);
+        }
+        ensureOverviewFinalLink();
+      }
+
+      function ensureOverviewFinalLink() {
+        let node = $("overviewFinalLink");
+        if (node) return node;
+        const stepTop = document.querySelector(".step-top");
+        if (!stepTop) return null;
+        node = document.createElement("div");
+        node.id = "overviewFinalLink";
+        node.className = "overview-final-link";
+        node.hidden = true;
+        node.setAttribute("role", "button");
+        node.tabIndex = 0;
+        const title = document.createElement("strong");
+        title.append("最终结果");
+        const successTag = document.createElement("span");
+        successTag.id = "overviewSuccessTag";
+        successTag.className = "result-success-tag";
+        successTag.hidden = true;
+        successTag.textContent = "成功提取！";
+        title.appendChild(successTag);
+        const code = document.createElement("code");
+        code.id = "overviewFinalLinkText";
+        code.textContent = "等待 Stripe 中转地址";
+        node.append(title, code);
+        const metric = $("stepMetric");
+        stepTop.insertBefore(node, metric || null);
+        const copyOverviewLink = () => copyTextWithStatus(node.dataset.url || "", "已复制 Stripe 中转地址。");
+        node.addEventListener("click", copyOverviewLink);
+        node.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            copyOverviewLink();
+          }
+        });
+        return node;
+      }
+
+      function updateOverviewFinalLink(urls) {
+        const node = ensureOverviewFinalLink();
+        if (!node) return;
+        const textNode = $("overviewFinalLinkText");
+        const pmUrl = urls?.pmUrl || "";
+        node.hidden = !pmUrl;
+        node.dataset.url = pmUrl;
+        if (textNode) textNode.textContent = pmUrl || "等待 Stripe 中转地址";
+      }
+
+      function applyPrimaryLinkDisplay(data = currentResultData || {}) {
+        const urls = resolveResultUrls(data);
+        const metrics = ensureRunMetrics();
+        metrics.pmRedirectUrl = urls.pmUrl || metrics.pmRedirectUrl;
+        metrics.paypalBaUrl = urls.baUrl || metrics.paypalBaUrl;
+        metrics.primaryUrl = urls.primaryUrl || "";
+        currentLongUrl = urls.primaryUrl || "";
+
+        $("primaryLinkLabel").textContent =
+          urls.primaryKind === "pm"
+            ? "主结果链接（Stripe 中转，点击复制）"
+            : urls.primaryKind === "ba"
+              ? "主结果链接（PayPal BA，点击复制）"
+              : urls.primaryKind === "hosted"
+                ? "主结果链接（Hosted 回退，点击复制）"
+                : "主结果链接（点击复制）";
+        setCodeValue("longUrl", urls.primaryUrl, "暂无", { hero: Boolean(urls.primaryUrl) });
+        setCodeValue("pmRedirectUrl", urls.pmUrl, "暂无", { hero: Boolean(urls.pmUrl) });
+        setCodeValue("paypalBaUrl", urls.baUrl);
+        toggleResultRow("paypalBaRow", Boolean(urls.baUrl));
+        updateOverviewFinalLink(urls);
+
+        copyButton.textContent = urls.primaryKind === "pm" ? "复制中转链" : "复制主链接";
+        openLink.textContent =
+          urls.primaryKind === "pm"
+            ? "跳转中转链"
+            : urls.primaryKind === "ba"
+              ? "跳转 BA 链"
+              : "跳转主链接";
+
+        setLinkEnabled(Boolean(urls.primaryUrl));
+        setPmRedirectEnabled(urls.pmUrl);
+        openPmRedirect.hidden = !urls.pmUrl || urls.primaryKind === "pm";
+        updateResultSuccessState(data);
+        return urls;
       }
 
       function eventStatus(item) {
@@ -2651,18 +4422,27 @@
         return "current";
       }
 
+      function shouldIgnorePostPmStep(step) {
+        const metrics = ensureRunMetrics();
+        return Boolean(metrics.pmEarlyFinished) && ["redirect_poll", "stripe_redirect", "provider_redirect", "provider_recover"].includes(String(step || ""));
+      }
+
       function trackRunEvent(item) {
         if (!item) return;
         const data = item.data || {};
         if (data.reset_steps) resetRunMetrics({ start: true });
         const metrics = ensureRunMetrics();
+        const step = String(item.step || "");
+        if (shouldIgnorePostPmStep(step)) {
+          refreshRunOverview();
+          return;
+        }
         if (!metrics.startedAt) {
           metrics.startedAt = performance.now();
           startElapsedTimer();
         }
 
         const now = performance.now();
-        const step = String(item.step || "");
         const attempt = Number.parseInt(String(data.attempt || ""), 10);
         const maxAttempts = Number.parseInt(String(data.max_attempts || ""), 10);
         if (Number.isFinite(attempt) && attempt > 0) metrics.attempt = attempt;
@@ -2670,17 +4450,65 @@
 
         const poolSize = Number.parseInt(String(data.approve_pool_size || ""), 10);
         const poolMax = Number.parseInt(String(data.approve_pool_max_attempts || ""), 10);
-        if (Number.isFinite(poolSize) && poolSize > 0) metrics.approvePoolSize = poolSize;
+        const escalationTier = Number.parseInt(String(data.approve_escalation_tier || ""), 10);
+        const escalationTotal = Number.parseInt(String(data.approve_escalation_total || ""), 10);
+        if (Number.isFinite(poolSize) && poolSize > 0) {
+          metrics.approvePoolSize = poolSize;
+        }
         if (Number.isFinite(poolMax) && poolMax > 0) metrics.approvePoolMaxAttempts = poolMax;
+        if (Number.isFinite(escalationTier) && escalationTier > 0) {
+          if (metrics.approveEscalationTier && metrics.approveEscalationTier !== escalationTier) {
+            metrics.approveAttempts = 0;
+          }
+          metrics.approveEscalationTier = escalationTier;
+        }
+        if (Number.isFinite(escalationTotal) && escalationTotal > 0) metrics.approveEscalationTotal = escalationTotal;
 
         const approveAttempt = Number.parseInt(String(data.approve_attempt || ""), 10);
-        if (Number.isFinite(approveAttempt) && approveAttempt > metrics.approveAttempts) {
+        const tierOnce = Number.isFinite(escalationTier) && escalationTier > 0 && poolMax === 1;
+        if (tierOnce) {
+          if (Number.isFinite(approveAttempt) && approveAttempt > 0) {
+            metrics.approveAttempts = 1;
+          }
+        } else if (Number.isFinite(approveAttempt) && approveAttempt > metrics.approveAttempts) {
           metrics.approveAttempts = approveAttempt;
-          animateApproveCounter(approveAttempt);
         }
 
         const approveResult = String(data.approve_result || data.result || "").trim();
-        if (approveResult) metrics.approveResult = approveResult;
+        if (approveResult) {
+          const current = String(metrics.approveResult || "").trim().toLowerCase();
+          const incoming = approveResult.toLowerCase();
+          if (current === "approved" && incoming !== "approved") {
+            // 已 approved 后忽略 exception/blocked 等后续 worker 噪声
+          } else {
+            metrics.approveResult = approveResult;
+          }
+        }
+
+        if (data.billing_name || data.billing_line1 || data.billing_country) {
+          metrics.billingSnapshot = {
+            name: String(data.billing_name || ""),
+            email: String(data.billing_email || ""),
+            country: String(data.billing_country || ""),
+            line1: String(data.billing_line1 || ""),
+            city: String(data.billing_city || ""),
+            state: String(data.billing_state || ""),
+            postalCode: String(data.billing_postal_code || ""),
+          };
+        }
+
+        const stripeRedirect = normalizeUrl(data.stripe_redirect_url || "");
+        if (stripeRedirect) metrics.stripeRedirectUrl = stripeRedirect;
+        const providerRedirect = normalizeUrl(data.provider_redirect_url || "");
+        if (providerRedirect) metrics.providerRedirectUrl = providerRedirect;
+        const rawLongUrl = normalizeUrl(data.long_url || "");
+        if (rawLongUrl) {
+          metrics.primaryUrl = rawLongUrl;
+          if (isPaypalBaUrl(rawLongUrl)) metrics.paypalBaUrl = rawLongUrl;
+        }
+        const pmCandidate = normalizeUrl(data.pm_redirect_url || data.redirect_url || "");
+        if (isPmRedirectUrl(pmCandidate)) metrics.pmRedirectUrl = pmCandidate;
+        if (!metrics.pmRedirectUrl && isPmRedirectUrl(stripeRedirect)) metrics.pmRedirectUrl = stripeRedirect;
 
         if (step) {
           if (metrics.currentRawStep && metrics.currentRawStep !== step) {
@@ -2707,7 +4535,7 @@
       }
 
       function visibleSteps() {
-        return FLOW_STEPS[$("linkType").value] || FLOW_STEPS.hosted;
+        return FLOW_STEPS.paypal;
       }
 
       function statusLabel(status) {
@@ -2742,6 +4570,12 @@
       }
 
       function groupMessage(group) {
+        if (group.key === "result") {
+          const urls = resolveResultUrls(currentResultData || {});
+          if (urls.primaryKind === "pm") return "已拿到 Stripe 中转地址，可直接复制或跳转。";
+          if (urls.primaryKind === "ba") return "已生成 PayPal BA 链接，可直接复制或跳转。";
+          if (urls.primaryKind === "hosted") return "当前展示 hosted 回退地址，可用于继续排查。";
+        }
         const metrics = ensureRunMetrics();
         for (const step of [...group.steps].reverse()) {
           const timing = metrics.stepTiming.get(step);
@@ -2754,7 +4588,11 @@
 
       function groupStatus(group) {
         const metrics = ensureRunMetrics();
-        if (group.key === "result" && metrics.finalOk === false) return "error";
+        if (group.key === "result") {
+          const urls = resolveResultUrls(currentResultData || {});
+          if (urls.pmUrl || urls.baUrl) return "done";
+          if (metrics.finalOk === false) return "error";
+        }
         const states = group.steps.map((step) => stepState.get(step)?.status || metrics.stepTiming.get(step)?.status || "pending");
         if (states.includes("error")) return "error";
         if (states.includes("current")) return "current";
@@ -2766,18 +4604,158 @@
         return "pending";
       }
 
+      function createStepBadge(text, tone = "") {
+        const badge = document.createElement("span");
+        badge.className = `step-badge ${tone}`.trim();
+        badge.textContent = text;
+        return badge;
+      }
+
+      function groupBadgeItems(group, status) {
+        const metrics = ensureRunMetrics();
+        const items = [];
+
+        if (status === "error") items.push({ text: "失败", tone: "error" });
+        else if (status === "done") items.push({ text: "完成", tone: "ok" });
+        else if (status === "current") items.push({ text: "进行中" });
+
+        if (group.key === "prepare") {
+          items.push(currentInputEmail ? { text: "已检测邮箱", tone: "ok" } : { text: "未检测邮箱", tone: "warn" });
+          if ($("billingCountry")?.value) items.push({ text: `账单 ${$("billingCountry").value}` });
+        }
+
+        if (group.key === "checkout") {
+          if ($("currency")?.value) items.push({ text: $("currency").value });
+          if (metrics.attempt) items.push({ text: `第 ${metrics.attempt} 轮` });
+        }
+
+        if (group.key === "stripe") {
+          if (metrics.billingSnapshot?.country) items.push({ text: `账单 ${metrics.billingSnapshot.country}` });
+          if (metrics.stripeRedirectUrl) items.push({ text: urlHost(metrics.stripeRedirectUrl) || "Stripe" });
+        }
+
+        if (group.key === "approve") {
+          const tierNo = metrics.approveEscalationTier || 1;
+          const poolSize = metrics.approvePoolSize || 1;
+          items.push({ text: formatApproveAttemptLabel(tierNo, poolSize) });
+          if (metrics.approveResult && metrics.approveResult !== "pending") {
+            const normalized = metrics.approveResult.toLowerCase();
+            items.push({
+              text: `结果 ${metrics.approveResult}`,
+              tone: normalized === "approved" ? "ok" : normalized === "blocked" ? "error" : "warn",
+            });
+          }
+        }
+
+        if (group.key === "redirect") {
+          const pmHost = urlHost(metrics.pmRedirectUrl || lastPmRedirectUrl || "");
+          if (pmHost) items.push({ text: pmHost, tone: "ok" });
+          const providerHost = urlHost(metrics.providerRedirectUrl || "");
+          if (providerHost) items.push({ text: `provider ${providerHost}` });
+        }
+
+        if (group.key === "result") {
+          const urls = resolveResultUrls(currentResultData || {});
+          if (urls.primaryKind) {
+            items.push({
+              text: primaryKindLabel(urls.primaryKind),
+              tone: urls.primaryKind === "hosted" ? "warn" : "ok",
+            });
+          }
+          if (currentResultData?.fallback) items.push({ text: "fallback", tone: "warn" });
+        }
+
+        return items.slice(0, 6);
+      }
+
+      function groupNoteItems(group) {
+        const notes = [];
+
+        if (group.key === "stripe") {
+          const billing = currentBillingSummary();
+          if (billing) notes.push(`账单地址：${billing}`);
+        }
+
+        if (group.key === "approve") {
+          notes.push("并发数字会按 approve 命中实时累加。");
+        }
+
+        if (group.key === "redirect") {
+          const urls = resolveResultUrls(currentResultData || {});
+          if (urls.pmUrl) notes.push(`中转地址：${truncateMiddle(urls.pmUrl, 34, 18)}`);
+        }
+
+        if (group.key === "result") {
+          const urls = resolveResultUrls(currentResultData || {});
+          if (urls.primaryUrl) notes.push(`主链接：${truncateMiddle(urls.primaryUrl, 36, 16)}`);
+          if (urls.baUrl && urls.primaryKind !== "ba") notes.push(`PayPal BA：${truncateMiddle(urls.baUrl, 30, 16)}`);
+        }
+
+        return notes.slice(0, 2);
+      }
+
+      function buildStepLogDetails(group, status = "pending") {
+        const details = document.createElement("details");
+        details.className = "step-log-details";
+        const logs = stepLogStore.get(group.key) || [];
+        const hasManualState = stepLogOpenState.has(group.key);
+        details.open = hasManualState ? stepLogOpenState.get(group.key) !== false : false;
+        details.dataset.logCount = String(logs.length);
+        details.addEventListener("toggle", () => {
+          stepLogOpenState.set(group.key, details.open);
+        });
+
+        const summary = document.createElement("summary");
+        const summaryLeft = document.createElement("span");
+        summaryLeft.className = "step-log-summary";
+        const count = document.createElement("span");
+        count.className = "step-log-count";
+        count.textContent = `${logs.length} 条`;
+        summaryLeft.append(count);
+        summary.appendChild(summaryLeft);
+        details.appendChild(summary);
+
+        const list = document.createElement("div");
+        list.className = "step-log-list";
+        if (!logs.length) {
+          const empty = document.createElement("div");
+          empty.className = "step-log-empty";
+          empty.textContent = "暂无日志。";
+          list.appendChild(empty);
+        } else {
+          for (const entry of [...logs].reverse()) {
+            list.appendChild(buildLogLineElement(entry));
+          }
+        }
+        details.appendChild(list);
+        return details;
+      }
+
       function renderSteps() {
         const groups = visibleFlowGroups();
         const grid = $("stepGrid");
         grid.innerHTML = "";
 
         let completed = 0;
-        for (const group of groups) {
+        groups.forEach((group, index) => {
           const status = groupStatus(group);
           if (status === "done" || status === "skipped") completed += 1;
 
           const card = document.createElement("div");
           card.className = `step-card ${status}`;
+          card.dataset.groupKey = group.key;
+          card.setAttribute("role", "button");
+          card.tabIndex = 0;
+
+          const head = document.createElement("div");
+          head.className = "step-card-head";
+
+          const indexNode = document.createElement("div");
+          indexNode.className = "step-index";
+          indexNode.textContent = String(index + 1).padStart(2, "0");
+
+          const headMeta = document.createElement("div");
+          headMeta.className = "step-head-meta";
 
           const headline = document.createElement("div");
           headline.className = "step-card-headline";
@@ -2788,25 +4766,80 @@
           duration.textContent = groupTiming(group);
           headline.append(title, duration);
 
+          const statusRow = document.createElement("div");
+          statusRow.className = "step-status-row";
           const statusNode = document.createElement("div");
           statusNode.className = `step-status ${status}`;
           statusNode.textContent = statusLabel(status);
+          statusRow.appendChild(statusNode);
+
+          headMeta.append(headline, statusRow);
+          head.append(indexNode, headMeta);
 
           const message = document.createElement("div");
           message.className = "step-message";
           message.textContent = groupMessage(group);
 
-          card.append(headline, statusNode, message);
+          const meta = document.createElement("div");
+          meta.className = "step-card-meta";
+          const badges = groupBadgeItems(group, status);
+          if (badges.length) {
+            const badgeRow = document.createElement("div");
+            badgeRow.className = "step-badges";
+            for (const badge of badges) {
+              badgeRow.appendChild(createStepBadge(badge.text, badge.tone || ""));
+            }
+            meta.appendChild(badgeRow);
+          }
+
+          const notes = groupNoteItems(group);
+          for (const note of notes) {
+            const noteNode = document.createElement("div");
+            noteNode.className = "step-meta-note";
+            noteNode.textContent = note;
+            meta.appendChild(noteNode);
+          }
+
+          card.append(head, message);
+          if (meta.childElementCount) card.appendChild(meta);
+          const logDetails = buildStepLogDetails(group, status);
+          card.setAttribute("aria-expanded", String(logDetails.open));
+          logDetails.addEventListener("toggle", () => {
+            card.setAttribute("aria-expanded", String(logDetails.open));
+          });
+          const toggleLogDetails = (event) => {
+            const interactive = event.target.closest("a, button, input, select, textarea, summary, code, .step-log-list");
+            if (interactive) return;
+            logDetails.open = !logDetails.open;
+            stepLogOpenState.set(group.key, logDetails.open);
+            card.setAttribute("aria-expanded", String(logDetails.open));
+          };
+          card.addEventListener("click", toggleLogDetails);
+          card.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            logDetails.open = !logDetails.open;
+            stepLogOpenState.set(group.key, logDetails.open);
+            card.setAttribute("aria-expanded", String(logDetails.open));
+          });
+          card.appendChild(logDetails);
           grid.appendChild(card);
-        }
+        });
 
         const currentGroup = groupForStep(currentStepKey);
         const currentMeta = currentGroup || { label: "尚未开始", description: "点击生成后开始更新。" };
+        const currentStatus = currentGroup ? groupStatus(currentGroup) : "pending";
+        const flowDetails = document.querySelector(".flow-details");
+        if (flowDetails) {
+          flowDetails.classList.toggle("has-current", Boolean(currentGroup));
+          flowDetails.dataset.status = currentStatus;
+        }
         $("currentStepTitle").innerHTML = `<strong>${currentMeta.label}</strong>`;
         $("currentStepDetail").textContent = currentGroup ? groupMessage(currentGroup) : currentMeta.description;
         $("stepMetric").textContent = `${completed} / ${groups.length}`;
         $("flowSummarySub").textContent = currentGroup ? `${completed}/${groups.length} · 当前：${currentGroup.label}` : `${completed}/${groups.length} · 等待开始`;
         $("stepProgress").style.width = `${groups.length ? Math.round((completed / groups.length) * 100) : 0}%`;
+        updateCurrentStepMetric();
       }
 
       function resetStepState() {
@@ -2830,6 +4863,7 @@
         const step = item.step;
         const data = item.data || {};
         if (step === "retry") return;
+        if (shouldIgnorePostPmStep(step)) return;
         if (!step || !STEP_LIBRARY[step]) return;
 
         if (data.reset_steps) {
@@ -2882,10 +4916,9 @@
       }
 
       function syncProviderProxyForBillingCountry() {
-        if ($("linkType").value !== "paypal") return;
-        const country = $("billingCountry").value || "US";
-        const checkoutProxy = $("checkoutProxy").value.trim() || DEFAULT_CHECKOUT_PROXY;
-        $("providerProxy").value = proxyForRegion(checkoutProxy, country);
+        const country = $("billingCountry").value || DEFAULT_BILLING_COUNTRY;
+        const base = $("quickProxy").value.trim() || $("checkoutProxy").value.trim() || DEFAULT_CHECKOUT_PROXY;
+        $("providerProxy").value = proxyForRegion(base, providerRegionForBilling(country));
       }
 
       function resetApproveResultStatus(text = "尚未执行 approve") {
@@ -2929,36 +4962,17 @@
       }
 
       function updateLockedCountry() {
-        const linkType = $("linkType").value;
-        const lockedCountry = LOCKED_COUNTRY_BY_TYPE[linkType] || "";
         const maxRetries = clampMaxRetries($("maxRetries").value);
-        if (lockedCountry) {
-          $("billingCountry").value = lockedCountry;
-          $("billingCountry").disabled = true;
-        } else {
-          $("billingCountry").disabled = false;
-          if (!$("billingCountry").value) $("billingCountry").value = linkType === "paypal" ? "US" : "US";
-        }
-        if (linkType === "paypal") {
-          applyPaymentStrategyFields();
-        } else {
-          syncProviderProxyForBillingCountry();
-        }
-
-        const providerDisabled = linkType === "hosted";
-        checkProviderProxyButton.disabled = providerDisabled;
-        $("providerProxyHint").textContent = providerDisabled
-          ? "hosted 模式不使用 provider 代理。"
-          : "当前链类型会使用这一段代理执行 Stripe/provider 阶段。";
-        setProxyResult("provider", defaultProxyResultText("provider", linkType));
+        fillCountries();
+        if (!$("billingCountry").value) $("billingCountry").value = DEFAULT_BILLING_COUNTRY;
+        $("billingCountry").disabled = false;
+        syncPaypalProxyFields();
+        checkProviderProxyButton.disabled = false;
+        $("providerProxyHint").textContent = providerProxyHintText();
+        setProxyResult("provider", defaultProxyResultText("provider"));
         $("guideSummary").textContent =
-          linkType === "paypal"
-            ? `会先用 checkout 代理创建 checkout，再用 provider 代理进入 Stripe，approve 回到 checkout 代理，最后解析 PayPal 真实 redirect URL。失败会自动重试，当前最多 ${maxRetries} 轮。`
-            : linkType === "gopay"
-              ? `会先向 ChatGPT 创建 checkout，再进入 Stripe，最后解析到 GoPay 的真实 redirect URL。失败会自动重试，当前最多 ${maxRetries} 轮。`
-              : "hosted 模式只生成 pay.openai.com 长链，不解析 provider 跳转。";
-        generateButton.textContent =
-          linkType === "paypal" ? "提取 PP 链" : linkType === "gopay" ? "提取 GoPay 链" : "生成支付长链";
+          `默认全程 JP 代理；日本服务器可勾选全程无代理直连。未勾无代理时 provider 随 DE 账单走德国。approve 按 1→2→4→8→16→30 路阶梯升级；单次超过 60 秒失败退出。`;
+        generateButton.textContent = "提取 PP 链";
         applyQuickProxyState();
         updateCurrency();
         renderPrinciple();
@@ -3015,7 +5029,11 @@
             approve_retries: approveRetries,
             approve_pool_size: approvePoolSize,
             approve_pool_max_attempts: approvePoolMaxAttempts,
-            payment_strategy: $("paymentStrategy").value,
+            approve_proxy_region: $("approveProxyRegion").value,
+            all_jp_proxy: isAllJpProxy(),
+            all_no_proxy: isAllNoProxy(),
+            fetch_ba_token: fetchBaTokenEnabled(),
+            billing_country: $("billingCountry").value,
           }),
         );
         setStatus("代理与重试配置已保存在本机浏览器。");
@@ -3026,7 +5044,7 @@
         localStorage.removeItem("openai_pay_long_link_proxy");
         applyProxyConfig(defaultProxyConfig());
         setProxyResult("checkout", defaultProxyResultText("checkout"));
-        setProxyResult("provider", defaultProxyResultText("provider", $("linkType").value));
+        setProxyResult("provider", defaultProxyResultText("provider"));
         resetRetryState(DEFAULT_MAX_RETRIES);
         updateLockedCountry();
         setStatus("已恢复默认代理与默认重试次数。");
@@ -3036,6 +5054,13 @@
         copyButton.disabled = !enabled;
         openLink.classList.toggle("disabled", !enabled);
         openLink.href = enabled ? currentLongUrl : "";
+      }
+
+      function setPmRedirectEnabled(url) {
+        const pmUrl = String(url || "").trim();
+        const enabled = pmUrl.includes("pm-redirects.stripe.com");
+        openPmRedirect.classList.toggle("disabled", !enabled);
+        openPmRedirect.href = enabled ? pmUrl : "";
       }
 
       function formatLogData(data) {
@@ -3052,8 +5077,7 @@
         container.appendChild(pill);
       }
 
-      function appendLog(item) {
-        $("logPanel").classList.add("show");
+      function buildLogLineElement(item) {
         const line = document.createElement("div");
         const type = item.type || item.event || "log";
         const ts = item.ts || new Date().toLocaleTimeString();
@@ -3080,13 +5104,19 @@
         const meta = document.createElement("div");
         meta.className = "log-meta";
         if (data.attempt || data.max_attempts) appendLogPill(meta, `轮次 ${data.attempt || 0}/${data.max_attempts || 0}`);
-        if (data.approve_attempt || data.approve_pool_max_attempts || data.approve_max_attempts) {
-          appendLogPill(meta, `approve ${data.approve_attempt || 0}/${data.approve_pool_max_attempts || data.approve_max_attempts || 0}`);
+        if (data.approve_escalation_tier && data.approve_pool_size) {
+          appendLogPill(meta, formatApproveAttemptLabel(data.approve_escalation_tier, data.approve_pool_size));
+        } else if (data.approve_pool_size) {
+          appendLogPill(meta, formatApproveAttemptLabel(1, data.approve_pool_size));
         }
-        if (data.approve_pool_size) appendLogPill(meta, `池 ${data.approve_pool_size} 路`);
+        if (data.provider_proxy_pool_used) appendLogPill(meta, `provider池 ${data.provider_proxy_attempts || 1} 路`, "ok");
+        if (data.extract_status) appendLogPill(meta, data.extract_status, data.extract_status === "OK" ? "ok" : "");
         if (result) appendLogPill(meta, `approve_result=${result}`, result.toLowerCase() === "approved" ? "ok" : result.toLowerCase() === "blocked" ? "error" : "");
         if (typeof data.ok === "boolean") appendLogPill(meta, data.ok ? "成功" : "失败", data.ok ? "ok" : "error");
         if (data.actual_protocol) appendLogPill(meta, `代理 ${data.actual_protocol}`);
+        if (data.billing_name) {
+          appendLogPill(meta, `账单 ${data.billing_country || ""} ${data.billing_name || ""}`.trim());
+        }
         if (meta.childElementCount) line.appendChild(meta);
 
         const details = Object.entries(data).filter(([, value]) => value !== "" && value !== null && value !== undefined);
@@ -3097,17 +5127,77 @@
           line.appendChild(pre);
         }
 
+        return line;
+      }
+
+      function finalizePmEarlySuccess(pmUrl) {
+        if (fetchBaTokenEnabled() || !isPmRedirectUrl(pmUrl)) return;
+        const metrics = ensureRunMetrics();
+        if (metrics.pmEarlyFinished) return;
+        metrics.pmEarlyFinished = true;
+        const now = performance.now();
+        metrics.finishedAt = now;
+        metrics.finalOk = true;
+        metrics.pmRedirectUrl = pmUrl;
+        stopElapsedTimer();
+        for (const step of ["redirect_poll", "stripe_redirect", "provider_redirect", "provider_recover"]) {
+          const timing = metrics.stepTiming.get(step) || { start: now, end: 0, status: "pending", message: "" };
+          timing.status = "skipped";
+          timing.end = now;
+          timing.message = "未勾 BA Token：命中 pm-redirects 后跳过";
+          metrics.stepTiming.set(step, timing);
+          stepState.set(step, { status: "skipped", message: timing.message });
+        }
+        $("totalElapsedSub").textContent = "已拿到 Stripe 中转地址，计时已停止";
+        setApproveMetricState(metrics.approveResult || "approved", "已拿到 Stripe 中转地址");
+        updateResultSuccessState({ pm_redirect_url: pmUrl, ok: true });
+        refreshRunOverview();
+        renderSteps();
+      }
+
+      function appendLog(item) {
+        $("logPanel").classList.add("show");
+        const data = item.data || {};
+        const pmCandidate = normalizeUrl(data.pm_redirect_url || data.redirect_url || "");
+        if (isPmRedirectUrl(pmCandidate)) {
+          lastPmRedirectUrl = pmCandidate;
+          ensureRunMetrics().pmRedirectUrl = pmCandidate;
+          applyPrimaryLinkDisplay(currentResultData || { pm_redirect_url: pmCandidate });
+          $("result").classList.add("show");
+          if (!currentResultData) {
+            $("extractStatus").textContent = "已拿到 Stripe 中转地址，前端已按成功处理，可直接复制或跳转。";
+          }
+          if (!fetchBaTokenEnabled()) {
+            finalizePmEarlySuccess(pmCandidate);
+          }
+        }
+
+        pushStepLog(item);
+        const line = buildLogLineElement(item);
         $("logList").appendChild(line);
         $("logList").scrollTop = $("logList").scrollHeight;
         trackRunEvent(item);
         applyApproveHint(item);
         syncRetryStateFromEvent(item);
         updateStepFromEvent(item);
+        renderSteps();
       }
 
       function clearLog() {
         $("logList").innerHTML = "";
-        $("logPanel").classList.remove("show");
+        lastPmRedirectUrl = "";
+        currentResultData = null;
+        currentLongUrl = "";
+        resetStepLogState();
+        applyPrimaryLinkDisplay({});
+        updateResultSuccessState({});
+        setPmRedirectEnabled("");
+        openPmRedirect.hidden = true;
+        $("summary").textContent = "";
+        $("extractStatus").textContent = "";
+        $("providerUrl").textContent = "";
+        $("stripeRedirectUrl").textContent = "";
+        $("stripeUrl").textContent = "";
         resetStepState();
         resetRetryState(clampMaxRetries($("maxRetries").value));
         resetRunMetrics();
@@ -3115,13 +5205,19 @@
       }
 
       function buildRequestPayload(accessToken) {
-        const checkoutProxy = $("checkoutProxy").value.trim();
-        const providerProxy = $("providerProxy").value.trim();
+        const directMode = isAllNoProxy();
+        const checkoutProxy = directMode ? "" : ($("checkoutProxy").value.trim() || DEFAULT_CHECKOUT_PROXY);
+        const providerProxy = directMode ? "" : $("providerProxy").value.trim();
+        const approveRegion = approveRegionForRequest();
+        const base = directMode ? "" : ($("quickProxy").value.trim() || checkoutProxy);
+        const approveProxy = directMode ? "" : proxyForRegion(base, approveRegion);
         return {
           accessToken,
           proxy: checkoutProxy,
-          checkout_proxy: checkoutProxy,
-          provider_proxy: providerProxy,
+          checkoutProxy: checkoutProxy,
+          providerProxy: providerProxy,
+          approveProxy: approveProxy,
+          approveProxyRegion: approveRegion,
           link_type: $("linkType").value,
           billing_country: $("billingCountry").value,
           checkout_ui_mode: $("checkoutMode").value,
@@ -3133,7 +5229,9 @@
           approveRetries: clampApproveRetries($("approveRetries").value),
           approvePoolSize: clampApprovePoolSize($("approvePoolSize").value),
           approvePoolMaxAttempts: clampApprovePoolMaxAttempts($("approvePoolMaxAttempts").value),
-          paymentStrategy: $("paymentStrategy").value,
+          paymentStrategy: paypalPaymentStrategy(),
+          fetchBaToken: fetchBaTokenEnabled(),
+          allNoProxy: isAllNoProxy(),
           taskId: currentTaskId,
         };
       }
@@ -3236,7 +5334,7 @@
           setProxyResult(stage, message, "error");
           setStatus(message, true);
         } finally {
-          button.disabled = stage === "provider" && $("linkType").value === "hosted";
+          button.disabled = false;
         }
       }
 
@@ -3245,7 +5343,7 @@
         appendLog({ step: "proxy_check", message: "开始检测本次运行将使用的全部代理。", data: {} });
         setStatus("正在检测本次运行代理...");
         setProxyResult("checkout", "正在检测 checkout 阶段代理...");
-        setProxyResult("provider", $("linkType").value === "hosted" ? "hosted 模式不使用 provider 代理。" : "正在检测 provider 阶段代理...");
+        setProxyResult("provider", "正在检测 provider 阶段代理...");
 
         try {
           const response = await fetch("/api/check-proxy", {
@@ -3274,41 +5372,39 @@
           }
 
           setProxyResult("checkout", grouped.get("checkout") || "未返回 checkout 阶段信息。", data.ok ? "ok" : "error");
-          if ($("linkType").value === "hosted") {
-            setProxyResult("provider", "hosted 模式不使用 provider 代理。");
-          } else {
-            setProxyResult("provider", grouped.get("provider") || "未返回 provider 阶段信息。", data.ok ? "ok" : "error");
-          }
+          setProxyResult("provider", grouped.get("provider") || "未返回 provider 阶段信息。", data.ok ? "ok" : "error");
           setStatus(data.ok ? "本次运行代理检测完成。" : data.message || "本次运行代理检测失败。", !data.ok);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           appendLog({ type: "error", step: "proxy_check", message, data: {} });
           setProxyResult("checkout", message, "error");
-          if ($("linkType").value !== "hosted") setProxyResult("provider", message, "error");
+          setProxyResult("provider", message, "error");
           setStatus(message, true);
         } finally {
           checkRuntimeProxyButton.disabled = false;
-          checkProviderProxyButton.disabled = $("linkType").value === "hosted";
+          checkProviderProxyButton.disabled = false;
         }
       }
 
       function renderResult(data) {
         applyRetryHistory(data.retry_history, data);
-        currentLongUrl = data.long_url || "";
-        $("longUrl").textContent = currentLongUrl;
-        $("summary").textContent = `${data.cs_id || ""} / ${data.billing_country || ""} / ${data.currency || ""} / ${data.link_type || ""} / 第 ${data.attempt_count || 1} 轮`;
+        currentResultData = data || {};
+        const urls = applyPrimaryLinkDisplay(currentResultData);
+        $("summary").textContent = `${data.cs_id || ""} / ${data.billing_country || ""} / ${data.currency || ""} / ${data.link_type || ""} / 第 ${data.attempt_count || 1} 轮${urls.primaryKind ? ` / ${primaryKindLabel(urls.primaryKind)}` : ""}`;
         const maxAttempts = clampMaxRetries(data.max_attempts || $("maxRetries").value);
         const attemptCount = Number.parseInt(String(data.attempt_count || 1), 10) || 1;
         const linkLabel =
           data.link_type === "paypal" ? "PP 链" : data.link_type === "gopay" ? "GoPay 链" : "hosted 长链";
-        const isPaypalBa = String(data.long_url || "").includes("paypal.com/agreements/approve");
-        $("extractStatus").textContent = data.ok && isPaypalBa
-          ? `第 ${attemptCount} / ${maxAttempts} 轮成功拿到 PayPal BA 链。`
-          : data.ok
-            ? `第 ${attemptCount} / ${maxAttempts} 轮成功生成${linkLabel === "hosted 长链" ? "" : " "} ${linkLabel}。`
-            : data.fallback
-              ? `已重试 ${attemptCount} 轮，仍未拿到 PayPal BA 链；若只剩 pay.openai.com/c/pay/cs_live_... 视为失败。`
-              : data.provider_error || "提取失败。";
+        const isPaypalBa = isPaypalBaUrl(data.long_url || "");
+        $("extractStatus").textContent = urls.primaryKind === "pm"
+          ? `第 ${attemptCount} / ${maxAttempts} 轮已拿到 Stripe 中转地址，前端默认按成功处理。`
+          : urls.primaryKind === "ba"
+            ? `第 ${attemptCount} / ${maxAttempts} 轮成功拿到 PayPal BA 链。`
+            : data.ok
+              ? `第 ${attemptCount} / ${maxAttempts} 轮成功生成${linkLabel === "hosted 长链" ? "" : " "} ${linkLabel}。`
+              : data.fallback
+                ? `已重试 ${attemptCount} 轮，仍未拿到 PayPal BA 链；若只剩 pay.openai.com/c/pay/cs_live_... 视为失败。`
+                : data.provider_error || "提取失败。";
         if (data.link_type === "paypal") {
           if (data.approve_result) {
             setApproveResultStatus(data.approve_result);
@@ -3322,70 +5418,37 @@
         $("stripeRedirectUrl").textContent = data.stripe_redirect_url || "";
         $("stripeUrl").textContent = data.stripe_hosted_url || "";
         $("result").classList.add("show");
-        setLinkEnabled(Boolean(currentLongUrl));
+        updateResultSuccessState(data);
+        renderSteps();
       }
 
-      function shouldTrackEmailStats(linkType) {
-        return linkType === "paypal" || linkType === "gopay";
+      function shouldTrackEmailStats() {
+        return true;
       }
 
-      function principleSections(linkType) {
-        if (linkType === "hosted") {
-          return {
-            title: "Hosted 长链生成原理",
-            intro: "hosted 模式不会继续提取 PayPal / GoPay，而是生成可直接打开的 pay.openai.com 长链。",
-            sections: [
-              ["读取输入", "前端解析 access_token，读取 checkout 代理、地区、语言和 Stripe key。"],
-              ["创建 checkout", "后端用 checkout 代理请求 ChatGPT `/backend-api/payments/checkout`，拿到 `cs_id`、地区、币种和 processor_entity。"],
-              ["初始化 Stripe", "再请求 Stripe `payment_pages/{cs_id}/init`，返回 `stripe_hosted_url`。"],
-              ["转换 hosted 长链", "把 `https://checkout.stripe.com/...` 改写成 `https://pay.openai.com/...`，这就是最终 hosted 长链。"],
-              ["返回结果", "前端展示长链、CS ID、地区、币种与原始 Stripe URL。"],
-            ],
-          };
-        }
-
-        if (linkType === "gopay") {
-          return {
-            title: "GoPay 链生成原理",
-            intro: "GoPay 与 PP 链流程相似，但支付地址资料和 payment method 类型会改成印尼 GoPay。provider 提取失败时不会直接当成功，而是自动重试直到上限。",
-            sections: [
-              ["读取输入", "前端读取 access_token、checkout 代理、provider 代理。provider 为空时，后端会使用 GoPay provider 兜底代理。"],
-              ["ChatGPT 创建 checkout", "后端用 checkout 代理请求 ChatGPT checkout，返回 `cs_id`、币种与 processor_entity。GoPay 会锁定印尼地址和 IDR。"],
-              ["使用 provider 代理", "checkout 创建完成后，Stripe 与后续外部跳转链会使用 provider 代理；ChatGPT approve 仍保持 checkout 代理。"],
-              ["Stripe init", "切到 provider 代理后，请求 Stripe `payment_pages/{cs_id}/init`，拿到 hosted checkout URL 与后续上下文。"],
-              ["生成印尼支付资料", "后端随机生成印尼姓名、邮箱、地址，作为 GoPay payment method 的账单资料。"],
-              ["创建 GoPay payment method", "向 Stripe `POST /v1/payment_methods`，`type=gopay`，生成 `pm_xxx`。"],
-              ["Confirm checkout", "再向 Stripe `POST /v1/payment_pages/{cs_id}/confirm`，要求 Stripe 返回 GoPay redirect。"],
-              ["可选 ChatGPT approve", "如果 Stripe 返回 `requires_approval`，后端会回到 ChatGPT 侧执行 `checkout/approve`。"],
-              ["轮询并解析 redirect", "轮询 Stripe payment page，取到 Stripe redirect URL 后继续跟外部跳转，直到定位最终 GoPay 跳转。"],
-              ["失败重试与最终结果", "单轮 provider 提取失败时，这一轮只算失败，不会直接当成功。系统会自动重跑下一轮；只有达到重试上限后，才把最后一轮 hosted 长链返回前端。"],
-            ],
-          };
-        }
-
+      function principleSections() {
         return {
           title: "PP 链生成原理",
-          intro: "PP 链不是直接拼出来的，而是通过真实 checkout 与 Stripe 支付流程，把 PayPal 最终 redirect URL 解析出来。provider 提取失败时不会直接当成功，而是自动重试直到上限。",
+          intro: "PP 链通过真实 checkout 与 Stripe 支付流程解析 PayPal BA 长链。默认 DE 账单 + provider 德国出口；可勾选全程 JP 统一三段代理。",
           sections: [
-            ["读取输入", "前端先解析 access_token，只提取其中真正的 `access_token`。同时读取 checkout 代理和 provider 代理。provider 代理留空时，后端会使用美国 provider 兜底代理。"],
-            ["创建 ChatGPT checkout", "后端先用 checkout 代理请求 ChatGPT `/backend-api/payments/checkout`。这一步会生成 `cs_id`、processor_entity、账单地区与币种。PP 模式这里沿用原版逻辑，checkout 锁定为 `US/USD`。"],
-            ["使用 provider 代理", "checkout 成功后，Stripe init、confirm 和外部跳转解析使用 provider 阶段代理，ChatGPT approve 继续保持 checkout 代理。"],
+            ["读取输入", "前端解析 access_token，读取 checkout / provider / approve 代理与账单地区（默认 DE）。"],
+            ["创建 ChatGPT checkout", "后端用固定 JP checkout 代理请求 ChatGPT `/backend-api/payments/checkout`，账单地区可选 US/DE（对应 USD/EUR）。"],
+            ["使用 provider / approve 代理", "Stripe init/confirm 默认用 provider 代理（DE/US）；approve 默认 JP；勾选全程 JP 后三段均为日本出口。"],
             ["初始化 Stripe payment page", "拿到 `cs_id` 以后，后端用 provider 代理请求 Stripe `POST /v1/payment_pages/{cs_id}/init`，返回 `stripe_hosted_url`、`config_id`、`init_checksum` 等上下文。"],
             ["生成 hosted 长链", "后端把 `checkout.stripe.com` 返回的 hosted URL 改写成 `pay.openai.com` 长链。即使后面的 PP 提取失败，也能回退用这条 hosted 长链。"],
-            ["生成美国账单资料", "为了匹配 `US/USD` checkout，后端会随机生成美国姓名、邮箱、地址资料，避免 PayPal setup intent 因账单国家不一致被拒。"],
+            ["生成账单资料", "按所选 US/DE 从地址池随机生成 ASCII 安全姓名与街道，避免 PayPal setup intent 因账单国家不一致被拒。"],
             ["创建 PayPal payment method", "后端向 Stripe `POST /v1/payment_methods`，`type=paypal`，生成 `pm_xxx`。这一步本质上是先把 PayPal 支付方式挂到当前 checkout。"],
             ["Confirm checkout", "后端再请求 Stripe `POST /v1/payment_pages/{cs_id}/confirm`。这一步会让 Stripe 开始准备 PayPal 跳转。"],
             ["可选 ChatGPT approve", "如果 Stripe 返回 `requires_approval`，后端会回到 ChatGPT 侧先做 sentinel ping，再调用 `/backend-api/payments/checkout/approve`，然后继续取 redirect。"],
-            ["轮询 Stripe redirect", "如果 confirm 没直接返回 redirect，后端会轮询 Stripe `GET /v1/payment_pages/{cs_id}`，直到从响应里解析到 `redirect_to_url`。"],
-            ["解析外部跳转", "拿到 Stripe redirect URL 后，后端不会直接停下，而是继续按跳转链一跳一跳跟下去，直到命中 `paypal.com` 域名，或者无法继续跳转。"],
-            ["失败重试与最终结果", "单轮 provider 提取失败时，这一轮只算失败，不会直接当成功。系统会自动重新跑下一轮 checkout + provider 流程；只有达到重试上限后，才把最后一轮 hosted 长链返回前端，并把每轮错误原因实时打印出来。"],
+            ["轮询 Stripe redirect", "approve 通过后轮询 `GET /v1/payment_pages/{cs_id}`，优先解析顶层 `url` 或 `redirect_to_url`（含 pm-redirects）。"],
+            ["解析外部跳转", "默认拿到 pm-redirects 即成功；勾选「获取 BA Token」后才会继续跟到 `paypal.com/agreements/approve`。"],
+            ["超时与最终结果", "单次提链超过 100 秒即失败退出；未拿到 BA 时返回 hosted 长链并打印事实日志。"],
           ],
         };
       }
 
       function renderPrinciple() {
-        const linkType = $("linkType").value;
-        const content = principleSections(linkType);
+        const content = principleSections();
         $("principleTitle").textContent = content.title;
         $("principleIntro").textContent = content.intro;
         $("principleContent").innerHTML = "";
@@ -3554,6 +5617,7 @@
         taskTerminated = false;
         updateTaskControls();
         setLinkEnabled(false);
+        setPmRedirectEnabled("");
         clearLog();
         resetRunMetrics({ start: true });
         resetRetryState(clampMaxRetries($("maxRetries").value));
@@ -3563,11 +5627,14 @@
         stepState.set("input", { status: "current", message: "已提交生成请求，等待后端返回首个事件。" });
         renderSteps();
 
+        const abortController = new AbortController();
+        const timeoutId = window.setTimeout(() => abortController.abort(), LINK_TIMEOUT_MS);
         try {
           const response = await fetch("/api/long-link/stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(buildRequestPayload(accessToken)),
+            signal: abortController.signal,
           });
           if (!response.ok) {
             const text = await response.text();
@@ -3576,22 +5643,24 @@
 
           const data = await readStream(response);
           renderResult(data);
-          if (shouldTrackEmailStats(data.link_type || $("linkType").value)) {
+          if (shouldTrackEmailStats()) {
             recordEmailStats(currentRunHadEmail, Boolean(data.ok));
           }
-          setStatus(data.ok ? "生成完成。" : "已达到重试上限，返回最后一轮 hosted 长链。", !data.ok);
+          setStatus(data.ok ? "生成完成。" : (data.fallback ? "提链失败，已返回 hosted 长链。" : "提链失败。"), !data.ok);
         } catch (error) {
+          window.clearTimeout(timeoutId);
           currentLongUrl = "";
           const message = error instanceof Error ? error.message : String(error);
           if (!retryState) resetRetryState(clampMaxRetries($("maxRetries").value));
           retryState.final = true;
           retryState.summary = `任务失败：${message}`;
           renderRetryState();
-          if (shouldTrackEmailStats($("linkType").value)) {
+          if (shouldTrackEmailStats()) {
             recordEmailStats(currentRunHadEmail, false);
           }
           setStatus(message, true);
         } finally {
+          window.clearTimeout(timeoutId);
           const metrics = ensureRunMetrics();
           if (metrics.startedAt && !metrics.finishedAt) {
             metrics.finishedAt = performance.now();
@@ -3608,10 +5677,15 @@
         }
       }
 
+      async function copyTextWithStatus(text, successText) {
+        const value = String(text || "").trim();
+        if (!value) return;
+        await navigator.clipboard.writeText(value);
+        setStatus(successText);
+      }
+
       async function copyLink() {
-        if (!currentLongUrl) return;
-        await navigator.clipboard.writeText(currentLongUrl);
-        setStatus("已复制。");
+        await copyTextWithStatus(currentLongUrl, "已复制主链接。");
       }
 
       fillCountries();
@@ -3621,6 +5695,7 @@
       loadProxyConfig();
       renderEmailStats();
       renderPrinciple();
+      arrangeUiPanels();
       resetRunMetrics();
       renderSteps();
       updateLockedCountry();
@@ -3628,112 +5703,25 @@
       updateTaskControls();
       updateTokenMeta();
 
-      // 这里用干净定义覆盖前面被错误编码污染的代理检测文案，不改变请求体和按钮行为。
-      async function checkProxyStage(stage) {
-        const button = stage === "provider" ? checkProviderProxyButton : checkCheckoutProxyButton;
-        button.disabled = true;
-        const linkType = $("linkType").value;
-        appendLog({ step: "proxy_check", message: `开始检测 ${stage} 代理。`, data: {} });
-        setStatus(`正在检测 ${stage} 代理...`);
-        setProxyResult(stage, `正在检测 ${stage} 代理...`);
-
-        try {
-          const response = await fetch("/api/check-proxy", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              stage,
-              link_type: linkType,
-              proxy: $("checkoutProxy").value.trim(),
-              proxy_input: stage === "provider" ? $("providerProxy").value.trim() : $("checkoutProxy").value.trim(),
-              checkout_proxy: $("checkoutProxy").value.trim(),
-              provider_proxy: $("providerProxy").value.trim(),
-            }),
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(data.detail || data.message || "代理检测请求失败。");
-          }
-          for (const item of data.checks || []) {
-            appendLog({
-              type: item.ok ? "result" : "error",
-              step: item.stage || "proxy_check",
-              message: formatProxyCheck(item),
-              data: { proxy: item.proxy_hint || "", source: item.source || "" },
-            });
-          }
-          const resultText = (data.checks || []).map(formatProxyCheck).join("\n") || data.message || `${stage} 代理检测完成。`;
-          setProxyResult(stage, resultText, data.ok ? "ok" : "error");
-          setStatus(data.ok ? `${stage} 代理检测完成。` : data.message || `${stage} 代理检测失败。`, !data.ok);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          appendLog({ type: "error", step: "proxy_check", message, data: {} });
-          setProxyResult(stage, message, "error");
-          setStatus(message, true);
-        } finally {
-          button.disabled = stage === "provider" && $("linkType").value === "hosted";
-        }
-      }
-
-      async function checkRuntimeProxy() {
-        checkRuntimeProxyButton.disabled = true;
-        appendLog({ step: "proxy_check", message: "开始检测本次运行将使用的全部代理。", data: {} });
-        setStatus("正在检测本次运行代理...");
-        setProxyResult("checkout", "正在检测 checkout 阶段代理...");
-        setProxyResult("provider", $("linkType").value === "hosted" ? "hosted 模式不使用 provider 代理。" : "正在检测 provider 阶段代理...");
-
-        try {
-          const response = await fetch("/api/check-proxy", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(runtimeProxyPayload()),
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(data.detail || data.message || "运行代理检测请求失败。");
-          }
-
-          const grouped = new Map();
-          for (const item of data.checks || []) {
-            grouped.set(item.stage, formatProxyCheck(item));
-            appendLog({
-              type: item.ok ? "result" : "error",
-              step: item.stage || "proxy_check",
-              message: formatProxyCheck(item),
-              data: {
-                proxy: item.proxy_hint || "",
-                selection_source: item.selection_source || "",
-                source: item.source || "",
-              },
-            });
-          }
-
-          setProxyResult("checkout", grouped.get("checkout") || "未返回 checkout 阶段信息。", data.ok ? "ok" : "error");
-          if ($("linkType").value === "hosted") {
-            setProxyResult("provider", "hosted 模式不使用 provider 代理。");
-          } else {
-            setProxyResult("provider", grouped.get("provider") || "未返回 provider 阶段信息。", data.ok ? "ok" : "error");
-          }
-          setStatus(data.ok ? "本次运行代理检测完成。" : data.message || "本次运行代理检测失败。", !data.ok);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          appendLog({ type: "error", step: "proxy_check", message, data: {} });
-          setProxyResult("checkout", message, "error");
-          if ($("linkType").value !== "hosted") setProxyResult("provider", message, "error");
-          setStatus(message, true);
-        } finally {
-          checkRuntimeProxyButton.disabled = false;
-          checkProviderProxyButton.disabled = $("linkType").value === "hosted";
-        }
-      }
-
       $("accessToken").addEventListener("input", updateTokenMeta);
       $("quickProxy").addEventListener("input", applyQuickProxyState);
-      $("linkType").addEventListener("change", updateLockedCountry);
-      $("paymentStrategy").addEventListener("change", applyPaymentStrategyFields);
+      $("approveProxyRegion").addEventListener("change", applyQuickProxyState);
+      $("allJpProxy").addEventListener("change", () => {
+        if ($("allJpProxy").checked) $("allNoProxy").checked = false;
+        updateProxyModeUi();
+        applyQuickProxyState();
+        $("providerProxyHint").textContent = providerProxyHintText();
+      });
+      $("allNoProxy").addEventListener("change", () => {
+        if ($("allNoProxy").checked) $("allJpProxy").checked = false;
+        updateProxyModeUi();
+        applyQuickProxyState();
+        $("providerProxyHint").textContent = providerProxyHintText();
+      });
       $("billingCountry").addEventListener("change", () => {
         updateCurrency();
-        syncProviderProxyForBillingCountry();
+        syncPaypalProxyFields();
+        applyQuickProxyState();
       });
       $("maxRetries").addEventListener("change", () => {
         const value = clampMaxRetries($("maxRetries").value);
@@ -3749,6 +5737,14 @@
       });
       $("approvePoolMaxAttempts").addEventListener("change", () => {
         $("approvePoolMaxAttempts").value = String(clampApprovePoolMaxAttempts($("approvePoolMaxAttempts").value));
+      });
+      $("fetchBaToken").addEventListener("change", () => {
+        if (currentResultData) {
+          renderResult(currentResultData);
+          return;
+        }
+        applyPrimaryLinkDisplay({ pm_redirect_url: lastPmRedirectUrl });
+        renderSteps();
       });
       $("saveProxyConfig").addEventListener("click", saveProxyConfig);
       $("clearProxyConfig").addEventListener("click", clearProxyConfig);
@@ -3773,6 +5769,9 @@
       resumeTaskButton.addEventListener("click", () => setTaskPaused(false));
       terminateTaskButton.addEventListener("click", terminateTask);
       copyButton.addEventListener("click", copyLink);
+      $("longUrl").addEventListener("click", () => copyTextWithStatus(currentLongUrl, "已复制主链接。"));
+      $("pmRedirectUrl").addEventListener("click", () => copyTextWithStatus(resolveResultUrls(currentResultData || {}).pmUrl, "已复制 Stripe 中转地址。"));
+      $("paypalBaUrl").addEventListener("click", () => copyTextWithStatus(resolveResultUrls(currentResultData || {}).baUrl, "已复制 PayPal BA 链接。"));
     </script>
   </body>
 </html>

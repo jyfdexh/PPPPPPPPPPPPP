@@ -1,4 +1,6 @@
 __pycache__/
 .venv/
+.env
+.deploy.env
 *.pyc
 *.log

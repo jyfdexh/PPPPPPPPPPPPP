@@ -2,7 +2,18 @@
 
 ### 以后服务器同步 GitHub 更新：sudo opll-update
 Standalone tool for generating a hosted payment long link from a ChatGPT access token.
-
+部署
+curl -fsSL "https://github.com/jyfdexh/PPPPPPPPPPPPP/raw/refs/heads/main/deploy/install.sh" | sudo env \
+  DOMAIN=pay.2333330.xyz \
+  BIND_DOMAIN=yes \
+  USE_CLOUDFLARE=yes \
+  REPO_URL=https://github.com/jyfdexh/PPPPPPPPPPPPP.git \
+  BRANCH=main \
+  APP_DIR=/opt/opll \
+  APP_HOST=127.0.0.1 \
+  APP_PORT=8787 \
+  NONINTERACTIVE=yes \
+  bash
 ## Run
 
 ```powershell

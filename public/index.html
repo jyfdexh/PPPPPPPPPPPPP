@@ -990,6 +990,12 @@
         color: #991b1b;
       }
 
+      .step-badge.amount-zero {
+        background: #bbf7d0;
+        color: #14532d;
+        box-shadow: 0 0 0 1px rgba(22, 101, 52, 0.18);
+      }
+
       .step-meta-note {
         color: #475569;
         font-size: 12px;
@@ -1130,6 +1136,12 @@
       .log-pill.error {
         background: #7f1d1d;
         color: #fecaca;
+      }
+
+      .log-pill.amount-zero {
+        background: #14532d;
+        color: #bbf7d0;
+        font-weight: 800;
       }
 
       .log-data {
@@ -1959,6 +1971,32 @@
         display: none !important;
       }
 
+      .result-zero-amount-tag {
+        display: inline-flex;
+        align-items: center;
+        margin-left: 10px;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 800;
+        vertical-align: middle;
+      }
+
+      .result-zero-amount-tag.amount-zero {
+        background: #bbf7d0;
+        color: #14532d;
+        box-shadow: 0 0 0 1px rgba(22, 101, 52, 0.18);
+      }
+
+      .result-zero-amount-tag.amount-nonzero {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .result-success-banner .result-zero-amount-tag {
+        font-size: 15px;
+      }
+
       .overview-final-link.is-success {
         border-color: rgba(12, 122, 82, 0.28);
         background: #f2fbf5;
@@ -2304,6 +2342,19 @@
         color: #991b1b;
       }
 
+      .log-pill.amount-zero {
+        background: #dcfce7;
+        color: #166534;
+        font-weight: 800;
+        box-shadow: 0 0 0 1px rgba(22, 101, 52, 0.16);
+      }
+
+      .step-badge.amount-zero {
+        background: #dcfce7;
+        color: #166534;
+        box-shadow: 0 0 0 1px rgba(22, 101, 52, 0.16);
+      }
+
       .log-data {
         max-height: none;
         overflow: visible;
@@ -2611,11 +2662,6 @@
         }
       }
 
-      body.public-ui .quick-proxy-card,
-      body.public-ui .proxy-grid,
-      body.public-ui label[for="allJpProxy"] {
-        display: none !important;
-      }
     </style>
   </head>
   <body class="public-ui">
@@ -2792,7 +2838,7 @@
                 </div>
                 <div>
                   <label for="approveAttemptCount">approve 尝试次数</label>
-                  <input id="approveAttemptCount" type="number" min="1" max="4" step="1" value="4" />
+                  <input id="approveAttemptCount" type="number" min="1" max="10" step="1" value="10" />
                 </div>
                 <div>
                   <label for="stripeKey">Stripe Publishable Key</label>
@@ -2976,7 +3022,9 @@
           </div>
 
           <div id="result" class="result">
-            <div id="resultSuccessBanner" class="result-success-banner" hidden>成功提取！</div>
+            <div id="resultSuccessBanner" class="result-success-banner" hidden>
+              成功提取！<span id="resultZeroAmountTag" class="result-zero-amount-tag amount-zero" hidden></span>
+            </div>
             <div class="result-actions">
               <a id="openLink" class="button blue disabled" target="_blank" rel="noopener">跳转主链接</a>
               <a id="openPmRedirect" class="button secondary disabled" target="_blank" rel="noopener">打开中转链</a>
@@ -3132,7 +3180,7 @@
         },
         stripe_init: {
           label: "初始化 Stripe",
-          description: "请求 Stripe payment page init，拿到 hosted URL。",
+          description: "请求 Stripe payment page init，校验账单金额为 0 并拿到 hosted URL。",
         },
         hosted_url: {
           label: "生成 hosted 长链",
@@ -3276,7 +3324,7 @@
       const DEFAULT_PROVIDER_PROXY = "";
       const DEFAULT_UI_CONFIG = {
         profile: "public",
-        expose_proxy_controls: false,
+        expose_proxy_controls: true,
         proxy_presets: [],
         proxy_defaults: {
           quick_proxy: "",
@@ -3286,8 +3334,8 @@
           all_no_proxy: true,
         },
         approve_defaults: {
-          attempt_count: 4,
-          max_attempt_count: 4,
+          attempt_count: 10,
+          max_attempt_count: 10,
           max_pool_size: 2,
         },
       };
@@ -3301,7 +3349,7 @@
       const QUICK_PROXY_REGION_PATTERN = /region-([a-z]{2})/i;
       const DEFAULT_MAX_RETRIES = 1;
       const DEFAULT_APPROVE_RETRIES = 10;
-      const DEFAULT_APPROVE_ATTEMPT_COUNT = 4;
+      const DEFAULT_APPROVE_ATTEMPT_COUNT = 10;
       function paypalPaymentStrategy() {
         return $("billingCountry").value === "DE" ? "jp_de" : "jp_us";
       }
@@ -3494,18 +3542,8 @@
         renderProxyPresetList();
         const allNoProxy = $("allNoProxy");
         const allJpProxy = $("allJpProxy");
-        if (!isLocalUi) {
-          allNoProxy.checked = true;
-          allJpProxy.checked = false;
-          allNoProxy.disabled = true;
-          allJpProxy.disabled = true;
-          $("quickProxy").value = "";
-          $("checkoutProxy").value = "";
-          $("providerProxy").value = "";
-        } else {
-          allNoProxy.disabled = false;
-          allJpProxy.disabled = false;
-        }
+        if (allNoProxy) allNoProxy.disabled = false;
+        if (allJpProxy) allJpProxy.disabled = false;
       }
 
       async function loadRuntimeUiConfig() {
@@ -3587,18 +3625,10 @@
       }
 
       function updateProxyModeUi() {
-        const exposeProxyControls = proxyControlsExposed();
         const allNoProxy = $("allNoProxy");
         const allJpProxy = $("allJpProxy");
-        if (!exposeProxyControls) {
-          allNoProxy.checked = true;
-          allJpProxy.checked = false;
-          allNoProxy.disabled = true;
-          allJpProxy.disabled = true;
-        } else {
-          allNoProxy.disabled = false;
-          allJpProxy.disabled = false;
-        }
+        if (allNoProxy) allNoProxy.disabled = false;
+        if (allJpProxy) allJpProxy.disabled = false;
         const allJp = isAllJpProxy();
         const allDirect = isAllNoProxy();
         const approveSelect = $("approveProxyRegion");
@@ -3619,9 +3649,7 @@
         const hint = $("proxyModeHint");
         if (hint) {
           hint.textContent = allDirect
-            ? (exposeProxyControls
-              ? "已启用全程无代理：适合日本服务器部署，checkout / provider / approve 均不走代理。"
-              : "服务器公开模式：默认全程无代理，代理输入已隐藏。")
+            ? "已启用全程无代理：checkout / provider / approve 均不走代理。需要代理时可取消勾选并填写快捷代理。"
             : allJp
               ? "已启用全程 JP 代理：checkout / provider / approve 三段均走日本出口。"
               : "未勾选时 provider 随地区走 US/DE，approve 走上方选择。";
@@ -3801,13 +3829,6 @@
         $("approveProxyRegion").value = merged.approve_proxy_region || "JP";
         $("allNoProxy").checked = Boolean(merged.all_no_proxy);
         $("allJpProxy").checked = merged.all_no_proxy ? false : merged.all_jp_proxy !== false;
-        if (!proxyControlsExposed()) {
-          $("allNoProxy").checked = true;
-          $("allJpProxy").checked = false;
-          $("quickProxy").value = "";
-          $("checkoutProxy").value = "";
-          $("providerProxy").value = "";
-        }
         $("fetchBaToken").checked = Boolean(merged.fetch_ba_token);
         if (merged.billing_country) $("billingCountry").value = merged.billing_country;
         applyQuickProxyState();
@@ -4210,6 +4231,10 @@
           approveEscalationTotal: 6,
           approveResult: "pending",
           billingSnapshot: null,
+          checkoutAmount: "",
+          checkoutAmountDisplay: "",
+          checkoutAmountIsZero: null,
+          checkoutCurrency: "",
           pmRedirectUrl: "",
           paypalBaUrl: "",
           stripeRedirectUrl: "",
@@ -4487,6 +4512,26 @@
         return Boolean(data.ok) && Boolean(urls.primaryUrl) && !data.fallback;
       }
 
+      function zeroAmountHintText(metrics = ensureRunMetrics()) {
+        if (!metrics.checkoutAmountDisplay) return { text: "", show: false, tone: "" };
+        if (metrics.checkoutAmountIsZero !== false) {
+          return { text: `0 元 · ${metrics.checkoutAmountDisplay}`, show: true, tone: "amount-zero" };
+        }
+        return { text: `非零 · ${metrics.checkoutAmountDisplay}`, show: true, tone: "amount-nonzero" };
+      }
+
+      function applyZeroAmountSuccessHints(success, metrics = ensureRunMetrics()) {
+        const hint = zeroAmountHintText(metrics);
+        const showHint = Boolean(success && hint.show);
+        for (const id of ["resultZeroAmountTag", "overviewZeroAmountTag"]) {
+          const node = $(id);
+          if (!node) continue;
+          node.hidden = !showHint;
+          node.textContent = showHint ? hint.text : "";
+          node.className = `result-zero-amount-tag ${hint.tone}`.trim();
+        }
+      }
+
       function updateResultSuccessState(data = currentResultData || {}) {
         const metrics = ensureRunMetrics();
         const success = isExtractionSuccess(data) || Boolean(metrics.pmEarlyFinished && (metrics.pmRedirectUrl || lastPmRedirectUrl));
@@ -4494,6 +4539,7 @@
         if (banner) banner.hidden = !success;
         const tag = $("overviewSuccessTag");
         if (tag) tag.hidden = !success;
+        applyZeroAmountSuccessHints(success, metrics);
         const overview = $("overviewFinalLink");
         if (overview) overview.classList.toggle("is-success", success);
       }
@@ -4542,7 +4588,11 @@
         successTag.className = "result-success-tag";
         successTag.hidden = true;
         successTag.textContent = "成功提取！";
-        title.appendChild(successTag);
+        const zeroTag = document.createElement("span");
+        zeroTag.id = "overviewZeroAmountTag";
+        zeroTag.className = "result-zero-amount-tag amount-zero";
+        zeroTag.hidden = true;
+        title.append(successTag, zeroTag);
         const code = document.createElement("code");
         code.id = "overviewFinalLinkText";
         code.textContent = "等待 Stripe 中转地址";
@@ -4693,6 +4743,16 @@
           };
         }
 
+        if (data.checkout_amount_display || data.checkout_amount !== undefined) {
+          metrics.checkoutAmount = String(data.checkout_amount ?? "");
+          metrics.checkoutAmountDisplay = String(data.checkout_amount_display || "");
+          metrics.checkoutAmountIsZero = data.checkout_amount_is_zero !== false;
+          if (data.currency) metrics.checkoutCurrency = String(data.currency);
+          if (metrics.finalOk === true || metrics.pmEarlyFinished) {
+            applyZeroAmountSuccessHints(true, metrics);
+          }
+        }
+
         const stripeRedirect = normalizeUrl(data.stripe_redirect_url || "");
         if (stripeRedirect) metrics.stripeRedirectUrl = stripeRedirect;
         const providerRedirect = normalizeUrl(data.provider_redirect_url || "");
@@ -4823,10 +4883,22 @@
         if (group.key === "checkout") {
           if ($("currency")?.value) items.push({ text: $("currency").value });
           if (metrics.attempt) items.push({ text: `第 ${metrics.attempt} 轮` });
+          if (metrics.checkoutAmountDisplay) {
+            items.push({
+              text: metrics.checkoutAmountIsZero ? `0 元 · ${metrics.checkoutAmountDisplay}` : `非零 · ${metrics.checkoutAmountDisplay}`,
+              tone: metrics.checkoutAmountIsZero ? "amount-zero" : "error",
+            });
+          }
         }
 
         if (group.key === "stripe") {
           if (metrics.billingSnapshot?.country) items.push({ text: `账单 ${metrics.billingSnapshot.country}` });
+          if (metrics.checkoutAmountDisplay) {
+            items.push({
+              text: metrics.checkoutAmountIsZero ? `0 元已校验 · ${metrics.checkoutAmountDisplay}` : `金额异常 · ${metrics.checkoutAmountDisplay}`,
+              tone: metrics.checkoutAmountIsZero ? "amount-zero" : "error",
+            });
+          }
           if (metrics.stripeRedirectUrl) items.push({ text: urlHost(metrics.stripeRedirectUrl) || "Stripe" });
         }
 
@@ -4868,6 +4940,10 @@
         const notes = [];
 
         if (group.key === "stripe") {
+          const metrics = ensureRunMetrics();
+          if (metrics.checkoutAmountIsZero && metrics.checkoutAmountDisplay) {
+            notes.push(`账单金额已校验为 0：${metrics.checkoutAmountDisplay}`);
+          }
           const billing = currentBillingSummary();
           if (billing) notes.push(`账单地址：${billing}`);
         }
@@ -5177,10 +5253,6 @@
 
       function loadProxyConfig() {
         const defaults = defaultProxyConfig();
-        if (!proxyControlsExposed()) {
-          applyProxyConfig(defaults);
-          return;
-        }
         const raw = localStorage.getItem("openai_pay_long_link_proxy_config");
         if (raw) {
           try {
@@ -5313,6 +5385,13 @@
         if (data.actual_protocol) appendLogPill(meta, `代理 ${data.actual_protocol}`);
         if (data.billing_name) {
           appendLogPill(meta, `账单 ${data.billing_country || ""} ${data.billing_name || ""}`.trim());
+        }
+        if (data.checkout_amount_display) {
+          appendLogPill(
+            meta,
+            data.checkout_amount_is_zero ? `0 元 · ${data.checkout_amount_display}` : `非零 · ${data.checkout_amount_display}`,
+            data.checkout_amount_is_zero ? "amount-zero" : "error",
+          );
         }
         if (meta.childElementCount) line.appendChild(meta);
 

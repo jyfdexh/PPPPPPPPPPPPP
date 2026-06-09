@@ -276,9 +276,9 @@ class ProgressStreamTests(unittest.TestCase):
 
     def test_approve_escalation_exhausted_detail_mentions_server_limit(self) -> None:
         with patch.object(app, "UI_PROFILE", "public"):
-            detail = app.approve_escalation_exhausted_detail("blocked", "blocked", total_attempts=4)
-        self.assertIn("4 次尝试", detail)
-        self.assertIn("最高 2 路", detail)
+            detail = app.approve_escalation_exhausted_detail("blocked", "blocked", total_attempts=10)
+        self.assertIn("10 次尝试", detail)
+        self.assertIn("2 路并发", detail)
 
     def test_normalize_approve_attempt_count_defaults_to_six(self) -> None:
         with patch.object(app, "UI_PROFILE", "local"):
@@ -287,8 +287,9 @@ class ProgressStreamTests(unittest.TestCase):
 
     def test_normalize_approve_attempt_count_server_defaults_and_caps(self) -> None:
         with patch.object(app, "UI_PROFILE", "public"):
-            self.assertEqual(app.normalize_approve_attempt_count(None), 4)
-            self.assertEqual(app.normalize_approve_attempt_count(8), 4)
+            self.assertEqual(app.normalize_approve_attempt_count(None), 10)
+            self.assertEqual(app.normalize_approve_attempt_count(8), 8)
+            self.assertEqual(app.normalize_approve_attempt_count(12), 10)
 
     def test_approve_pool_size_for_round_extended_local_uses_thirty(self) -> None:
         with patch.object(app, "UI_PROFILE", "local"):
@@ -1004,6 +1005,109 @@ class ProgressStreamTests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.status_code, 504)
         self.assertIn("60s", str(ctx.exception.detail))
+
+    def test_checkout_amount_helpers(self) -> None:
+        zero_payload = {"invoice": {"amount_due": 0}, "currency": "usd"}
+        nonzero_payload = {"total_summary": {"due": 2000}, "currency": "usd"}
+
+        self.assertEqual(app.checkout_amount_cents(zero_payload), 0)
+        self.assertEqual(app.checkout_amount_cents(nonzero_payload), 2000)
+        self.assertEqual(app.format_checkout_amount(0, "usd"), "0 USD")
+        self.assertEqual(app.format_checkout_amount(2000, "usd"), "20 USD")
+        self.assertTrue(app.checkout_amount_snapshot(zero_payload, {"currency": "USD"})["checkout_amount_is_zero"])
+        self.assertFalse(app.checkout_amount_snapshot(nonzero_payload, {"currency": "USD"})["checkout_amount_is_zero"])
+
+    def test_generate_core_aborts_on_nonzero_checkout_amount(self) -> None:
+        req = self.make_request()
+        progress_events: list[tuple[str, str, dict | None]] = []
+
+        def progress(step: str, message: str, data=None) -> None:
+            progress_events.append((step, message, data))
+
+        with (
+            patch.object(app, "build_chatgpt_session", return_value=SimpleNamespace()),
+            patch.object(
+                app,
+                "create_checkout",
+                return_value={
+                    "cs_id": "cs_test_123",
+                    "processor_entity": "openai_llc",
+                    "billing_country": "US",
+                    "currency": "USD",
+                },
+            ),
+            patch.object(
+                app,
+                "stripe_init",
+                return_value={
+                    "stripe_hosted_url": "https://checkout.stripe.com/c/pay/cs_test_123",
+                    "invoice": {"amount_due": 2000},
+                    "currency": "usd",
+                },
+            ),
+            patch.object(app, "create_provider_link") as create_provider_link_mock,
+        ):
+            with self.assertRaises(app.HTTPException) as ctx:
+                app.generate_long_link_core(req, progress=progress)
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertIn("账单金额非零", str(ctx.exception.detail))
+        create_provider_link_mock.assert_not_called()
+        self.assertFalse(any(step == "stripe_init" and "校验通过" in message for step, message, _data in progress_events))
+
+    def test_generate_core_reports_zero_checkout_amount_in_progress(self) -> None:
+        req = self.make_request()
+        progress_events: list[tuple[str, str, dict | None]] = []
+
+        def progress(step: str, message: str, data=None) -> None:
+            progress_events.append((step, message, data))
+
+        with (
+            patch.object(app, "build_chatgpt_session", return_value=SimpleNamespace()),
+            patch.object(
+                app,
+                "create_checkout",
+                return_value={
+                    "cs_id": "cs_test_123",
+                    "processor_entity": "openai_llc",
+                    "billing_country": "US",
+                    "currency": "USD",
+                },
+            ),
+            patch.object(
+                app,
+                "stripe_init",
+                return_value={
+                    "stripe_hosted_url": "https://checkout.stripe.com/c/pay/cs_test_123",
+                    "invoice": {"amount_due": 0},
+                    "currency": "usd",
+                },
+            ),
+            patch.object(
+                app,
+                "create_provider_link",
+                return_value={
+                    "payment_method_id": "pm_test_123",
+                    "stripe_redirect_url": "https://hooks.stripe.com/test",
+                    "provider_redirect_url": "https://www.paypal.com/agreements/approve?ba_token=BA-TEST",
+                    "long_url": "https://www.paypal.com/agreements/approve?ba_token=BA-TEST",
+                },
+            ),
+        ):
+            result = app.generate_long_link_core(req, progress=progress)
+
+        self.assertTrue(result.ok)
+        amount_event = next(
+            (
+                (step, message, data)
+                for step, message, data in progress_events
+                if step == "stripe_init" and (data or {}).get("checkout_amount_is_zero") is True
+            ),
+            None,
+        )
+        self.assertIsNotNone(amount_event)
+        self.assertIn("账单金额校验通过", amount_event[1])
+        self.assertEqual((amount_event[2] or {}).get("checkout_amount_display"), "0 USD")
 
     def test_normalize_max_retries_bounds(self) -> None:
         self.assertEqual(app.normalize_max_retries(0), 1)

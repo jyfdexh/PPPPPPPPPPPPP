@@ -624,9 +624,9 @@ def normalize_approve_pool_max_attempts(value: Any) -> int:
 APPROVE_ESCALATION_TIERS_LOCAL: tuple[int, ...] = (1, 2, 4, 8, 16, 30)
 APPROVE_ESCALATION_TIERS_SERVER: tuple[int, ...] = (1, 2)
 APPROVE_ATTEMPT_COUNT_DEFAULT_LOCAL = 6
-APPROVE_ATTEMPT_COUNT_DEFAULT_SERVER = 4
+APPROVE_ATTEMPT_COUNT_DEFAULT_SERVER = 10
 APPROVE_ATTEMPT_COUNT_MAX_LOCAL = 50
-APPROVE_ATTEMPT_COUNT_MAX_SERVER = 4
+APPROVE_ATTEMPT_COUNT_MAX_SERVER = 10
 # 兼容旧引用；实际运行请用 approve_escalation_tiers()
 APPROVE_ESCALATION_TIERS: tuple[int, ...] = APPROVE_ESCALATION_TIERS_LOCAL
 
@@ -1124,6 +1124,28 @@ def stripe_confirm_return_url(cs_id: str, checkout: dict[str, Any], stripe_hoste
     return hosted_url
 
 
+ZERO_DECIMAL_CURRENCIES = frozenset(
+    {
+        "BIF",
+        "CLP",
+        "DJF",
+        "GNF",
+        "JPY",
+        "KMF",
+        "KRW",
+        "MGA",
+        "PYG",
+        "RWF",
+        "UGX",
+        "VND",
+        "VUV",
+        "XAF",
+        "XOF",
+        "XPF",
+    }
+)
+
+
 def expected_amount(init_payload: Any) -> str:
     if not isinstance(init_payload, dict):
         return "0"
@@ -1147,6 +1169,49 @@ def expected_amount(init_payload: Any) -> str:
         if found:
             return str(total)
     return "0"
+
+
+def checkout_amount_cents(init_payload: Any) -> int:
+    try:
+        return int(str(expected_amount(init_payload)).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
+def checkout_amount_currency(init_payload: dict[str, Any], checkout: dict[str, Any]) -> str:
+    return str(init_payload.get("currency") or checkout.get("currency") or "").strip().lower()
+
+
+def format_checkout_amount(amount_cents: int, currency: str) -> str:
+    code = str(currency or "").strip().upper() or "USD"
+    if code in ZERO_DECIMAL_CURRENCIES:
+        return f"{amount_cents} {code}"
+    major = amount_cents / 100
+    text = f"{major:.2f}".rstrip("0").rstrip(".")
+    return f"{text} {code}"
+
+
+def checkout_amount_snapshot(init_payload: dict[str, Any], checkout: dict[str, Any]) -> dict[str, Any]:
+    amount_cents = checkout_amount_cents(init_payload)
+    currency = checkout_amount_currency(init_payload, checkout)
+    display = format_checkout_amount(amount_cents, currency)
+    return {
+        "checkout_amount": str(amount_cents),
+        "checkout_amount_display": display,
+        "checkout_amount_is_zero": amount_cents == 0,
+        "currency": currency or str(checkout.get("currency") or "").lower(),
+    }
+
+
+def require_zero_checkout_amount(init_payload: dict[str, Any], checkout: dict[str, Any]) -> dict[str, Any]:
+    snapshot = checkout_amount_snapshot(init_payload, checkout)
+    if not snapshot["checkout_amount_is_zero"]:
+        display = snapshot["checkout_amount_display"]
+        raise HTTPException(
+            status_code=409,
+            detail=f"账单金额非零（{display}），已中止。仅支持 0 元试用 checkout。",
+        )
+    return snapshot
 
 
 def stripe_context(cs_id: str, init_payload: dict[str, Any], req: LongLinkRequest) -> dict[str, Any]:
@@ -4315,9 +4380,13 @@ def create_provider_link(
             provider_url = hosted_provider_url
     long_url = pm_redirect_stop_url(req, provider_url, pm_redirect_url, stripe_redirect_url) or provider_url or pm_redirect_url or stripe_redirect_url
     if link_type == "paypal":
+        amount_display = format_checkout_amount(
+            checkout_amount_cents(init_payload),
+            checkout_amount_currency(init_payload, checkout),
+        )
         progress(
             "provider_redirect",
-            f"{checkout['cs_id']} · {checkout.get('billing_country', '')} · {checkout.get('currency', '')} · paypal · 0 {checkout.get('currency', '')}",
+            f"{checkout['cs_id']} · {checkout.get('billing_country', '')} · {checkout.get('currency', '')} · paypal · {amount_display}",
             {
                 "cs_id": checkout["cs_id"],
                 "billing_country": checkout.get("billing_country"),
@@ -4415,19 +4484,26 @@ def ui_proxy_defaults(profile: str | None = None) -> dict[str, Any]:
     }
 
 
+def ui_proxy_preset_base(profile: str | None = None) -> str:
+    current_profile = normalized_ui_profile(profile)
+    if current_profile == "local":
+        return normalize_proxy_url(LOCAL_UI_PROXY)
+    return normalize_proxy_url(DEFAULT_PROXY)
+
+
 def build_ui_config(profile: str | None = None) -> dict[str, Any]:
     current_profile = normalized_ui_profile(profile)
     defaults = ui_proxy_defaults(current_profile)
+    base_proxy = ui_proxy_preset_base(current_profile)
     proxy_presets: list[str] = []
-    if current_profile == "local":
-        base_proxy = normalize_proxy_url(LOCAL_UI_PROXY)
+    if base_proxy:
         proxy_presets = [
             proxy_for_region(base_proxy, "JP"),
             proxy_for_region(base_proxy, "US"),
         ]
     return {
         "profile": current_profile,
-        "expose_proxy_controls": current_profile == "local",
+        "expose_proxy_controls": True,
         "proxy_presets": [item for item in dict.fromkeys(proxy_presets) if item],
         "proxy_defaults": defaults,
         "approve_defaults": {
@@ -4543,11 +4619,13 @@ def generate_long_link_once(
             status_code=502,
             detail=f"stripe init response missing stripe_hosted_url/url, keys={sorted(init_payload.keys())}",
         )
+    amount_snapshot = require_zero_checkout_amount(init_payload, checkout)
     progress(
         "stripe_init",
-        "stripe_init",
+        f"账单金额校验通过：{amount_snapshot['checkout_amount_display']}",
         {
             "stripe_hosted_url": stripe_hosted_url,
+            **amount_snapshot,
             **(init_payload.get("_runtime_proxy") if isinstance(init_payload.get("_runtime_proxy"), dict) else {}),
         },
     )

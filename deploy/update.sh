@@ -94,7 +94,7 @@ main() {
   if [[ -n "${APP_ENV_FILE:-}" && -f "${APP_ENV_FILE}" ]] && ! grep -q '^OPENAI_PAY_UI_PROFILE=' "${APP_ENV_FILE}"; then
     printf '%s\n' 'OPENAI_PAY_UI_PROFILE="public"' >>"${APP_ENV_FILE}"
     chmod 600 "${APP_ENV_FILE}"
-    log "已补写服务器运行配置：OPENAI_PAY_UI_PROFILE=public（approve 最高 2 路 / 4 轮）"
+    log "已补写服务器运行配置：OPENAI_PAY_UI_PROFILE=public（approve 最高 2 路 / 10 轮）"
   fi
 
   log "重启 OPLL 服务"

@@ -1,0 +1,11 @@
+---
+pid: 19032
+cwd: "D:\nanno\Gpt_Plus\转长链\opll"
+command: "Stop-Process -Id 35128 -Force -ErrorAction SilentlyContinue; Get-NetTCPConnection -LocalPort 8788 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { if ($_ -and $_ -ne $PID) { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }; Start-Sleep -Seconds 2; D:\\nanno\\Gpt_Plus\\转长链\\opll\\.venv\\Scripts\\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8788 --no-access-log"
+started_at: 2026-06-08T20:30:52.265Z
+running_for_ms: 1610012  
+---
+INFO:     Started server process [65884]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8788 (Press CTRL+C to quit)

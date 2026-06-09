@@ -1,0 +1,19 @@
+---
+pid: 69864
+cwd: "D:\nanno\Gpt_Plus\转长链\opll"
+command: "Set-Location \"D:\\nanno\\Gpt_Plus\\转长链\\opll\"; .venv\\Scripts\\uvicorn.exe app:app --host 127.0.0.1 --port 8788"
+started_at: 2026-06-08T14:58:21.085Z
+running_for_ms: 21560012 
+---
+INFO:     Started server process [33376]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8788 (Press CTRL+C to quit)
+INFO:     127.0.0.1:14755 - "POST /api/long-link HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:5574 - "POST /api/long-link HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:7441 - "POST /api/long-link HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:1881 - "POST /api/long-link HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:12190 - "POST /api/long-link HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:14331 - "POST /api/long-link HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:1052 - "POST /api/long-link HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:8001 - "POST /api/long-link HTTP/1.1" 404 Not Found

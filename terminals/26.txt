@@ -1,0 +1,53 @@
+---
+pid: 42004
+cwd: "D:\nanno\Gpt_Plus\转长链\opll"
+command: "Set-Location \"D:\\nanno\\Gpt_Plus\\转长链\\opll\"; .venv\\Scripts\\python.exe -c @\"
+import json, re, time
+import app
+
+CHECKOUT = 'http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010'
+SESSION = open(r'测试session\\session2.txt', encoding='utf-8').read().strip()
+obj = json.loads(SESSION)
+print('expires=', obj.get('expires'))
+
+def pr(base, region):
+    return re.sub(r'region-[A-Za-z]{2}', f'region-{region}', base)
+
+req = app.apply_payment_strategy(app.LongLinkRequest(
+    accessToken=SESSION, link_type='paypal', billing_country='DE', payment_locale='de',
+    paymentStrategy='jp_de', approveProxyRegion='JP',
+    checkoutProxy=pr(CHECKOUT,'JP'), providerProxy=pr(CHECKOUT,'DE'), approveProxy=pr(CHECKOUT,'JP'),
+    approvePoolSize=4, approvePoolMaxAttempts=30,
+))
+t0=time.time()
+def progress(step, msg, data=None):
+    extra = ''
+    if data and data.get('redirect_url'): extra = ' url='+str(data['redirect_url'])[:80]
+    if data and data.get('long_url'): extra = ' ba='+str(data['long_url'])[:80]
+    print(f'[{time.time()-t0:5.1f}s] {step}: {msg}{extra}', flush=True)
+try:
+    res = app.generate_long_link_core(req, progress=progress)
+    print('OK', res.ok, (res.long_url or '')[:150], res.approve_result, f'elapsed={time.time()-t0:.1f}s')
+except Exception as e:
+    print('FAIL', e, f'elapsed={time.time()-t0:.1f}s')
+\"@ 2>&1"
+started_at: 2026-06-08T15:50:08.690Z
+running_for_ms: 18360013 
+---
+expires= 2026-09-06T13:31:28.474Z
+[  0.0s] retry: retry
+[  0.0s] input: input
+[  0.0s] chatgpt_session: chatgpt_session
+[  0.0s] chatgpt_session: chatgpt_session
+[  0.0s] checkout: checkout
+[  6.5s] checkout: checkout 创建成功
+[  6.9s] stripe_init: stripe_init
+[  9.0s] stripe_init: stripe_init
+[  9.0s] hosted_url: hosted_url
+[  9.0s] provider_proxy: provider_proxy
+[  9.0s] provider_prepare: 已生成 provider 账单资料：DE / EUR / paypal
+[ 11.3s] chatgpt_approve: requires_approval：ChatGPT approve 使用独立 approve 出口代理，启动并发 approve 池。
+[ 11.3s] chatgpt_approve: 正在发送 sentinel ping，准备确认 checkout。
+[ 12.2s] chatgpt_approve: ChatGPT Approve 并发请求池已启动：池容量 4 路，最多 30 次。
+[ 16.9s] chatgpt_approve: 并发 approve 第 1/30 次，approve_result=blocked。
+FAIL 504: link generation timeout after 60s elapsed=119.6s

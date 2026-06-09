@@ -1,0 +1,14 @@
+---
+pid: 64720
+cwd: "D:\nanno\Gpt_Plus\转长链\opll"
+command: "Set-Location \"D:\\nanno\\Gpt_Plus\\转长链\\opll\"; .venv\\Scripts\\uvicorn.exe app:app --host 127.0.0.1 --port 8788"
+started_at: 2026-06-08T15:44:29.401Z
+running_for_ms: 18790013 
+---
+INFO:     Started server process [15284]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8788 (Press CTRL+C to quit)
+INFO:     127.0.0.1:8042 - "POST /api/long-link HTTP/1.1" 504 Gateway Timeout
+INFO:     127.0.0.1:11991 - "POST /api/long-link HTTP/1.1" 504 Gateway Timeout
+INFO:     127.0.0.1:1541 - "POST /api/long-link HTTP/1.1" 504 Gateway Timeout

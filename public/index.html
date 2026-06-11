@@ -1438,6 +1438,38 @@
         font-size: 24px;
       }
 
+      .jp-proxy-options {
+        display: grid;
+        gap: 10px;
+      }
+
+      .jp-proxy-option {
+        width: 100%;
+        text-align: left;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f8fbfd;
+        cursor: pointer;
+        font: inherit;
+        line-height: 1.45;
+      }
+
+      .jp-proxy-option:hover {
+        border-color: var(--accent);
+        background: #eef7fb;
+      }
+
+      .jp-proxy-option strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .jp-proxy-option code {
+        font-size: 12px;
+        word-break: break-all;
+      }
+
       .principle-list {
         display: grid;
         gap: 10px;
@@ -2702,7 +2734,7 @@
               <div class="field-head">
                 <label for="accessToken">Access Token 或 session JSON</label>
                 <div class="quick-actions">
-                  <button id="fetchBrowserSession" class="secondary" type="button">直接获取本浏览器 session</button>
+                  <button id="copyAccessToken" class="secondary" type="button">复制 Ac_Token</button>
                   <button id="copySessionUrl" class="secondary" type="button">复制 session 地址</button>
                   <button id="openSessionPage" class="secondary" type="button">打开 session 页面</button>
                 </div>
@@ -2736,7 +2768,11 @@
                   <input id="allNoProxy" type="checkbox" checked />
                   <span>全程无代理</span>
                 </label>
-                <span id="proxyModeHint" class="proxy-hint">默认全程无代理，checkout / provider / approve 均直连。需要代理时可取消勾选并填写快捷代理。</span>
+                <label class="checkbox-label" for="customProxy">
+                  <input id="customProxy" type="checkbox" />
+                  <span>自定义代理</span>
+                </label>
+                <span id="proxyModeHint" class="proxy-hint">默认全程无代理。勾选「全程 JP」会弹出预设供选择；勾选「自定义」可分别填写 Checkout / Provider（Checkout 固定日本出口）。</span>
               </div>
             </div>
 
@@ -2755,26 +2791,13 @@
               </div>
             </div>
 
-            <div class="proxy-card quick-proxy-card">
-              <div class="proxy-card-head">
-                <strong>快捷代理</strong>
-                <span>填一个基准代理后：checkout 固定 JP；provider 默认 DE（随地区）；approve 默认 JP。勾选全程 JP 后三段统一日本。</span>
-              </div>
-              <input
-                id="quickProxy"
-                list="proxyPresetList"
-                placeholder="例如 http://user-region-US:pass@127.0.0.1:3010"
-              />
-              <span id="quickProxyHint" class="proxy-hint">默认按 region-XX 中的国家简称自动替换。</span>
-            </div>
-
             <datalist id="proxyPresetList"></datalist>
 
             <div class="proxy-grid">
               <div id="checkoutProxyCard" class="proxy-card">
                 <div class="proxy-card-head">
                   <strong>Checkout 代理</strong>
-                  <span>固定日本出口创建 checkout（仅 JP 有优惠）。PP 模式下不可改。</span>
+                  <span>固定日本出口（region-JP）。全程 JP 时与 Provider 相同；自定义时可单独填写。</span>
                 </div>
                 <input
                   id="checkoutProxy"
@@ -2792,7 +2815,7 @@
               <div id="providerProxyCard" class="proxy-card">
                 <div class="proxy-card-head">
                   <strong>Provider 代理</strong>
-                  <span>用于 Stripe init、payment method、confirm 与外部跳转。默认随地区走 DE/US；勾选全程 JP 后改为日本。</span>
+                  <span>用于 Stripe init、payment method、confirm 与外部跳转。全程 JP 时与 Checkout 相同；自定义时可只填此项并自动推导 JP Checkout。</span>
                 </div>
                 <input
                   id="providerProxy"
@@ -3113,6 +3136,19 @@
       </div>
     </div>
 
+    <div id="jpProxyPickerModal" class="modal" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-head">
+          <div>
+            <h2>选择 JP 代理</h2>
+            <div class="modal-intro">全程 JP：Checkout / Provider / approve 统一使用 region-JP 日本出口。</div>
+          </div>
+          <button id="closeJpProxyPicker" class="secondary" type="button">取消</button>
+        </div>
+        <div id="jpProxyPickerOptions" class="jp-proxy-options"></div>
+      </div>
+    </div>
+
     <script>
       const COUNTRIES = [
         ["US", "美国 US", "USD"],
@@ -3319,19 +3355,37 @@
 
       const $ = (id) => document.getElementById(id);
       const CHATGPT_SESSION_URL = "https://chatgpt.com/api/auth/session";
-      const DEFAULT_QUICK_PROXY = "";
       const DEFAULT_CHECKOUT_PROXY = "";
       const DEFAULT_PROVIDER_PROXY = "";
+      const JP_PROXY_PRESETS = [
+        {
+          id: "local_http",
+          label: "本地 HTTP · 127.0.0.1:3010",
+          value: "http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010",
+        },
+        {
+          id: "remote_socks5",
+          label: "远程 SOCKS5 · us.cliproxy.io:3010",
+          value: "socks5://bj2m1188418-region-JP:nanno2@us.cliproxy.io:3010",
+        },
+        {
+          id: "remote_http",
+          label: "远程 HTTP · us.cliproxy.io:3010",
+          value: "http://bj2m1188418-region-JP:nanno2@us.cliproxy.io:3010",
+        },
+      ];
+      const DEFAULT_JP_CHECKOUT_PROXY = JP_PROXY_PRESETS[0].value;
+      const PROXY_REGION_PATTERN = /region-[A-Za-z]{2}/i;
       const DEFAULT_UI_CONFIG = {
         profile: "public",
         expose_proxy_controls: true,
         proxy_presets: [],
         proxy_defaults: {
-          quick_proxy: "",
           checkout_proxy: "",
           provider_proxy: "",
           all_jp_proxy: false,
           all_no_proxy: true,
+          custom_proxy: false,
         },
         approve_defaults: {
           attempt_count: 10,
@@ -3345,8 +3399,9 @@
         ["US", "美国 US", "USD"],
       ];
       const DEFAULT_BILLING_COUNTRY = "DE";
-      const LINK_TIMEOUT_MS = 65000;
-      const QUICK_PROXY_REGION_PATTERN = /region-([a-z]{2})/i;
+      const STREAM_IDLE_TIMEOUT_MS = 120000;
+      const STREAM_MAX_TIMEOUT_MS = 720000;
+
       const DEFAULT_MAX_RETRIES = 1;
       const DEFAULT_APPROVE_RETRIES = 10;
       const DEFAULT_APPROVE_ATTEMPT_COUNT = 10;
@@ -3364,7 +3419,7 @@
       const checkCheckoutProxyButton = $("checkCheckoutProxy");
       const checkProviderProxyButton = $("checkProviderProxy");
       const checkRuntimeProxyButton = $("checkRuntimeProxy");
-      const fetchBrowserSessionButton = $("fetchBrowserSession");
+      const copyAccessTokenButton = $("copyAccessToken");
       const openSessionPageButton = $("openSessionPage");
       const copySessionUrlButton = $("copySessionUrl");
       const copyButton = $("copy");
@@ -3372,6 +3427,8 @@
       const openPmRedirect = $("openPmRedirect");
       const statusLine = $("status");
       const principleModal = $("principleModal");
+      const jpProxyPickerModal = $("jpProxyPickerModal");
+      let jpProxyPickerResolver = null;
       const toolLayout = document.querySelector(".tool");
       const paneDivider = $("paneDivider");
       const desktopSplitMedia = window.matchMedia("(max-width: 1180px)");
@@ -3509,12 +3566,8 @@
         return runtimeUiConfig?.proxy_defaults || DEFAULT_UI_CONFIG.proxy_defaults;
       }
 
-      function defaultQuickProxy() {
-        return String(runtimeProxyDefaults().quick_proxy || DEFAULT_QUICK_PROXY || "");
-      }
-
       function defaultCheckoutProxy() {
-        return String(runtimeProxyDefaults().checkout_proxy || DEFAULT_CHECKOUT_PROXY || "");
+        return String(runtimeProxyDefaults().checkout_proxy || DEFAULT_CHECKOUT_PROXY || DEFAULT_JP_CHECKOUT_PROXY || "");
       }
 
       function defaultProviderProxy() {
@@ -3589,71 +3642,182 @@
         return Boolean($("allNoProxy")?.checked);
       }
 
+      function isCustomProxy() {
+        return Boolean($("customProxy")?.checked) && !isAllNoProxy();
+      }
+
       function providerRegionForBilling(billing) {
         if (isAllNoProxy()) return "direct";
+        if (isCustomProxy()) return "JP";
         if (isAllJpProxy()) return "JP";
         return billing === "DE" ? "DE" : "US";
       }
 
       function approveRegionForRequest() {
         if (isAllNoProxy()) return "direct";
-        return isAllJpProxy() ? "JP" : ($("approveProxyRegion").value || "JP");
+        return isAllJpProxy() || isCustomProxy() ? "JP" : ($("approveProxyRegion").value || "JP");
       }
 
-      function syncPaypalProxyFields() {
+      function ensureJpCheckoutProxy(value) {
+        const normalized = String(value || "").trim();
+        if (!normalized) return "";
+        return proxyForRegion(normalized, "JP");
+      }
+
+      function deriveCheckoutFromProvider(providerUrl) {
+        return ensureJpCheckoutProxy(providerUrl);
+      }
+
+      function renderJpProxyPickerOptions() {
+        const container = $("jpProxyPickerOptions");
+        if (!container) return;
+        container.textContent = "";
+        for (const [index, preset] of JP_PROXY_PRESETS.entries()) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "jp-proxy-option";
+          button.dataset.proxy = preset.value;
+          button.innerHTML = `<strong>${index + 1}. ${preset.label}</strong><code>${preset.value}</code>`;
+          button.addEventListener("click", () => applyJpProxyPreset(preset.value));
+          container.appendChild(button);
+        }
+      }
+
+      function openJpProxyPicker() {
+        return new Promise((resolve) => {
+          jpProxyPickerResolver = resolve;
+          jpProxyPickerModal?.classList.add("show");
+          jpProxyPickerModal?.setAttribute("aria-hidden", "false");
+        });
+      }
+
+      function closeJpProxyPicker(result = null) {
+        jpProxyPickerModal?.classList.remove("show");
+        jpProxyPickerModal?.setAttribute("aria-hidden", "true");
+        if (jpProxyPickerResolver) {
+          jpProxyPickerResolver(result);
+          jpProxyPickerResolver = null;
+        }
+      }
+
+      function applyJpProxyPreset(url) {
+        const normalized = String(url || "").trim();
+        const billing = $("billingCountry").value || DEFAULT_BILLING_COUNTRY;
+        $("checkoutProxy").value = ensureJpCheckoutProxy(normalized);
+        $("providerProxy").value = proxyForRegion(normalized, providerRegionForBilling(billing));
+        closeJpProxyPicker(normalized);
+      }
+
+      function syncProxyFields() {
         const billing = $("billingCountry").value || DEFAULT_BILLING_COUNTRY;
         $("paymentLocale").value = billing === "DE" ? "de" : "en";
         if (isAllNoProxy()) {
           $("checkoutProxy").value = "";
           $("providerProxy").value = "";
+        } else if (isCustomProxy()) {
+          const provider = $("providerProxy").value.trim();
+          const checkout = $("checkoutProxy").value.trim();
+          if (provider && !checkout) {
+            $("checkoutProxy").value = deriveCheckoutFromProvider(provider);
+          } else if (checkout) {
+            $("checkoutProxy").value = ensureJpCheckoutProxy(checkout);
+          }
+        } else if (isAllJpProxy()) {
+          const base = $("checkoutProxy").value.trim() || $("providerProxy").value.trim() || defaultCheckoutProxy();
+          $("checkoutProxy").value = ensureJpCheckoutProxy(base);
+          $("providerProxy").value = proxyForRegion(base, providerRegionForBilling(billing));
         } else {
-          const quickProxy = $("quickProxy").value.trim();
-          const base = quickProxy || defaultQuickProxy();
-          $("checkoutProxy").value = proxyForRegion(base, "JP");
+          const base = $("checkoutProxy").value.trim() || defaultCheckoutProxy();
+          $("checkoutProxy").value = ensureJpCheckoutProxy(base);
           $("providerProxy").value = proxyForRegion(base, providerRegionForBilling(billing));
         }
-        $("checkoutProxy").disabled = true;
-        $("checkoutProxyCard").classList.add("disabled");
+        updateProxyFieldAvailability();
         updateProxyModeUi();
         updateCurrency();
       }
 
+      function updateProxyFieldAvailability() {
+        const allDirect = isAllNoProxy();
+        const allJp = isAllJpProxy();
+        const custom = isCustomProxy();
+        const lockFields = allDirect || allJp;
+        $("checkoutProxy").disabled = lockFields;
+        $("checkoutProxyCard").classList.toggle("disabled", lockFields);
+        $("providerProxy").disabled = lockFields;
+        $("providerProxyCard").classList.toggle("disabled", lockFields);
+        if (custom && !allDirect) {
+          $("checkoutProxy").disabled = false;
+          $("providerProxy").disabled = false;
+          $("checkoutProxyCard").classList.remove("disabled");
+          $("providerProxyCard").classList.remove("disabled");
+        }
+      }
+
       function providerProxyHintText() {
         if (isAllNoProxy()) return "全程无代理：checkout / provider / approve 均直连本机出口。";
-        if (isAllJpProxy()) return "全程 JP 已启用：provider 阶段也走日本出口。";
-        return "provider 阶段随地区走 DE/US 出口。";
+        if (isAllJpProxy()) return "全程 JP：Checkout / Provider / approve 统一走 region-JP 日本出口。";
+        if (isCustomProxy()) return "自定义模式：可只填 Provider，Checkout 会自动改为 region-JP。";
+        return "Checkout 固定日本出口；Provider 按地区/Approve 出口自动切换 region。";
       }
 
       function updateProxyModeUi() {
-        const allNoProxy = $("allNoProxy");
-        const allJpProxy = $("allJpProxy");
-        if (allNoProxy) allNoProxy.disabled = false;
-        if (allJpProxy) allJpProxy.disabled = false;
         const allJp = isAllJpProxy();
         const allDirect = isAllNoProxy();
+        const custom = isCustomProxy();
         const approveSelect = $("approveProxyRegion");
         if (allDirect) {
           approveSelect.disabled = true;
-        } else if (allJp) {
+        } else if (allJp || custom) {
           approveSelect.value = "JP";
           approveSelect.disabled = true;
         } else {
           approveSelect.disabled = false;
         }
-        const quickCard = document.querySelector(".quick-proxy-card");
-        const quickInput = $("quickProxy");
-        if (quickCard) quickCard.classList.toggle("disabled", allDirect);
-        if (quickInput) quickInput.disabled = allDirect;
-        $("providerProxy").disabled = allDirect || Boolean($("quickProxy").value.trim());
-        $("providerProxyCard").classList.toggle("disabled", allDirect || Boolean($("quickProxy").value.trim()));
         const hint = $("proxyModeHint");
         if (hint) {
           hint.textContent = allDirect
-            ? "已启用全程无代理：checkout / provider / approve 均不走代理。需要代理时可取消勾选并填写快捷代理。"
+            ? "已启用全程无代理：checkout / provider / approve 均不走代理。"
             : allJp
-              ? "已启用全程 JP 代理：checkout / provider / approve 三段均走日本出口。"
-              : "未勾选时 provider 随地区走 US/DE，approve 走上方选择。";
+              ? "已启用全程 JP：Checkout / Provider / approve 统一走 region-JP。"
+              : custom
+                ? "已启用自定义代理：Checkout 固定日本出口，可单独填写 Provider。"
+                : "Checkout 固定日本出口；Provider 按所选 Approve 出口地区切换。";
         }
+        $("providerProxyHint").textContent = providerProxyHintText();
+      }
+
+      async function handleAllJpProxyToggle() {
+        if ($("allJpProxy").checked) {
+          $("allNoProxy").checked = false;
+          $("customProxy").checked = false;
+          const picked = await openJpProxyPicker();
+          if (!picked) {
+            $("allJpProxy").checked = false;
+            $("allNoProxy").checked = true;
+          }
+        }
+        syncProxyFields();
+        updateProxyModeUi();
+      }
+
+      function handleCustomProxyToggle() {
+        if ($("customProxy").checked) {
+          $("allNoProxy").checked = false;
+          $("allJpProxy").checked = false;
+        } else if (!$("allJpProxy").checked) {
+          $("allNoProxy").checked = true;
+        }
+        syncProxyFields();
+        updateProxyModeUi();
+      }
+
+      function handleAllNoProxyToggle() {
+        if ($("allNoProxy").checked) {
+          $("allJpProxy").checked = false;
+          $("customProxy").checked = false;
+        }
+        syncProxyFields();
+        updateProxyModeUi();
       }
 
       function clampApproveRetries(value) {
@@ -3769,7 +3933,6 @@
       function defaultProxyConfig() {
         const proxyDefaults = runtimeProxyDefaults();
         return {
-          quick_proxy: defaultQuickProxy(),
           checkout_proxy: defaultCheckoutProxy(),
           provider_proxy: defaultProviderProxy(),
           max_retries: DEFAULT_MAX_RETRIES,
@@ -3778,6 +3941,7 @@
           approve_proxy_region: "JP",
           all_jp_proxy: Boolean(proxyDefaults.all_jp_proxy),
           all_no_proxy: proxyDefaults.all_no_proxy !== false,
+          custom_proxy: Boolean(proxyDefaults.custom_proxy),
           fetch_ba_token: false,
           billing_country: DEFAULT_BILLING_COUNTRY,
         };
@@ -3787,37 +3951,8 @@
         return Boolean($("fetchBaToken")?.checked);
       }
 
-      // 快捷代理只负责派生 checkout/provider 两段代理，避免每次重复填写。
-      function deriveRegionProxy(proxy, countryCode) {
-        const value = String(proxy || "").trim();
-        if (!value) return "";
-        if (!QUICK_PROXY_REGION_PATTERN.test(value)) return value;
-        return value.replace(QUICK_PROXY_REGION_PATTERN, `region-${countryCode.toUpperCase()}`);
-      }
-
-      function applyQuickProxyState() {
-        if (isAllNoProxy()) {
-          syncPaypalProxyFields();
-          $("quickProxyHint").textContent = "全程无代理已启用，快捷代理与三段出口均不使用。";
-          return;
-        }
-        const quickProxy = $("quickProxy").value.trim();
-        const quickEnabled = Boolean(quickProxy);
-        const billing = $("billingCountry").value || DEFAULT_BILLING_COUNTRY;
-        const providerRegion = providerRegionForBilling(billing);
-        const approveRegion = approveRegionForRequest();
-
-        syncPaypalProxyFields();
-        $("providerProxy").disabled = quickEnabled;
-        $("providerProxyCard").classList.toggle("disabled", quickEnabled);
-        $("quickProxyHint").textContent = quickEnabled
-          ? `checkout=JP，provider=${providerRegion}，approve=${approveRegion}${isAllJpProxy() ? "（全程 JP）" : ""}。`
-          : "PP 模式：checkout 固定日本；可选手动填写 provider 代理。";
-      }
-
       function applyProxyConfig(config) {
         const merged = { ...defaultProxyConfig(), ...(config || {}) };
-        $("quickProxy").value = String(merged.quick_proxy || "");
         $("checkoutProxy").value = String(merged.checkout_proxy || "");
         $("providerProxy").value = String(merged.provider_proxy || "");
         $("maxRetries").value = String(clampMaxRetries(merged.max_retries));
@@ -3828,11 +3963,12 @@
         $("approveAttemptCount").value = String(clampApproveAttemptCount(attemptCount));
         $("approveProxyRegion").value = merged.approve_proxy_region || "JP";
         $("allNoProxy").checked = Boolean(merged.all_no_proxy);
-        $("allJpProxy").checked = merged.all_no_proxy ? false : merged.all_jp_proxy !== false;
+        $("customProxy").checked = Boolean(merged.custom_proxy) && !merged.all_no_proxy;
+        $("allJpProxy").checked = Boolean(merged.all_jp_proxy) && !merged.all_no_proxy && !merged.custom_proxy;
         $("fetchBaToken").checked = Boolean(merged.fetch_ba_token);
         if (merged.billing_country) $("billingCountry").value = merged.billing_country;
-        applyQuickProxyState();
-        syncPaypalProxyFields();
+        syncProxyFields();
+        updateProxyModeUi();
       }
 
       function newRetryState(maxAttempts = clampMaxRetries($("maxRetries").value)) {
@@ -4128,49 +4264,13 @@
         $("tokenMeta").textContent = meta.token.includes(".") ? "已识别 token，未检测到邮箱。" : "";
       }
 
-      async function fetchBrowserSession() {
-        fetchBrowserSessionButton.disabled = true;
-        setStatus("正在尝试读取当前浏览器 session...");
-
-        try {
-          const response = await fetch(CHATGPT_SESSION_URL, {
-            method: "GET",
-            credentials: "include",
-            headers: { Accept: "application/json" },
-            cache: "no-store",
-          });
-
-          if (!response.ok) {
-            if (response.status === 401) {
-              throw new Error("当前浏览器还没有登录 ChatGPT。");
-            }
-            throw new Error(`session 接口返回 ${response.status}`);
-          }
-
-          const text = await response.text();
-          let payload = null;
-          try {
-            payload = JSON.parse(text);
-          } catch {
-            throw new Error("session 接口没有返回可解析的 JSON。");
-          }
-
-          if (!payload || (typeof payload === "object" && Object.keys(payload).length === 0)) {
-            throw new Error("session 接口返回为空，当前浏览器可能没有有效会话。");
-          }
-
-          $("accessToken").value = JSON.stringify(payload, null, 2);
-          updateTokenMeta();
-          setStatus("已获取当前浏览器 session。");
-        } catch (error) {
-          const raw = error instanceof Error ? error.message : String(error);
-          const message = /Failed to fetch|NetworkError|Load failed/i.test(raw)
-            ? "当前页面无法直接读取 chatgpt.com session，通常是跨域限制、第三方 Cookie 隔离，或当前浏览器未登录 ChatGPT。"
-            : raw;
-          setStatus(message, true);
-        } finally {
-          fetchBrowserSessionButton.disabled = false;
+      async function copyAccessToken() {
+        const token = readAccessTokenInput();
+        if (!token) {
+          setStatus("请先粘贴 session JSON 或 accessToken。", true);
+          return;
         }
+        await copyTextWithStatus(token, "已复制 accessToken。");
       }
 
       async function copySessionUrl() {
@@ -5161,10 +5261,33 @@
         currentStepKey = step;
         const isDone = step === "done";
         const isFallback = step === "fallback";
+        const isApproveSkipped = step === "chatgpt_approve" && String(data.approve_result || "") === "skipped";
         stepState.set(step, {
-          status: item.type === "error" || isFallback ? "error" : isDone ? "done" : "current",
+          status: item.type === "error" || isFallback
+            ? "error"
+            : isApproveSkipped
+              ? "skipped"
+              : isDone
+                ? "done"
+                : "current",
           message: item.message || STEP_LIBRARY[step].description,
         });
+
+        if (isFallback) {
+          const fallbackIndex = keys.indexOf("fallback");
+          const stripeConfirmIndex = keys.indexOf("stripe_confirm");
+          for (const key of keys) {
+            const keyIndex = keys.indexOf(key);
+            if (keyIndex <= stripeConfirmIndex || keyIndex >= fallbackIndex || key === "fallback") continue;
+            const existing = stepState.get(key);
+            if (!existing || existing.status === "pending" || existing.status === "current") {
+              stepState.set(key, {
+                status: "skipped",
+                message: existing?.message || "前置 Stripe confirm 未进入 requires_approval，已跳过。",
+              });
+            }
+          }
+        }
 
         if (isDone) {
           finalizeRemainingSteps();
@@ -5185,12 +5308,6 @@
         const code = String(region || "").trim().toUpperCase();
         if (!value || !code || !value.includes("region-")) return value;
         return value.replace(/region-[A-Za-z]{2}/i, `region-${code}`);
-      }
-
-      function syncProviderProxyForBillingCountry() {
-        const country = $("billingCountry").value || DEFAULT_BILLING_COUNTRY;
-        const base = $("quickProxy").value.trim() || $("checkoutProxy").value.trim() || defaultCheckoutProxy();
-        $("providerProxy").value = proxyForRegion(base, providerRegionForBilling(country));
       }
 
       function resetApproveResultStatus(text = "尚未执行 approve") {
@@ -5238,14 +5355,12 @@
         fillCountries();
         if (!$("billingCountry").value) $("billingCountry").value = DEFAULT_BILLING_COUNTRY;
         $("billingCountry").disabled = false;
-        syncPaypalProxyFields();
+        syncProxyFields();
         checkProviderProxyButton.disabled = false;
-        $("providerProxyHint").textContent = providerProxyHintText();
         setProxyResult("provider", defaultProxyResultText("provider"));
         $("guideSummary").textContent =
-          `默认全程无代理直连。取消无代理后可启用 JP/地区代理；未勾无代理时 provider 随 DE 账单走德国。approve 按 1→2→4→8→16→30 路阶梯升级；单次超过 60 秒失败退出。`;
+          `默认全程无代理直连。勾选「全程 JP」可从预设填入 Checkout/Provider；勾选「自定义」可手动填写（Checkout 固定日本出口）。approve 按 1→2→4 路阶梯升级。`;
         generateButton.textContent = "提取 PP 链";
-        applyQuickProxyState();
         updateCurrency();
         renderPrinciple();
         resetStepState();
@@ -5261,7 +5376,7 @@
             applyProxyConfig({
               ...defaults,
               ...parsedConfig,
-              quick_proxy: Object.prototype.hasOwnProperty.call(parsedConfig, "quick_proxy") ? parsedConfig.quick_proxy : "",
+              custom_proxy: Boolean(parsedConfig.custom_proxy),
             });
             return;
           } catch {
@@ -5273,7 +5388,8 @@
         if (legacy) {
           applyProxyConfig({
             ...defaults,
-            quick_proxy: "",
+            all_no_proxy: false,
+            all_jp_proxy: true,
             checkout_proxy: legacy,
             provider_proxy: legacy,
           });
@@ -5292,7 +5408,6 @@
         localStorage.setItem(
           "openai_pay_long_link_proxy_config",
           JSON.stringify({
-            quick_proxy: $("quickProxy").value.trim(),
             checkout_proxy: $("checkoutProxy").value.trim(),
             provider_proxy: $("providerProxy").value.trim(),
             max_retries: maxRetries,
@@ -5301,6 +5416,7 @@
             approve_proxy_region: $("approveProxyRegion").value,
             all_jp_proxy: isAllJpProxy(),
             all_no_proxy: isAllNoProxy(),
+            custom_proxy: isCustomProxy(),
             fetch_ba_token: fetchBaTokenEnabled(),
             billing_country: $("billingCountry").value,
           }),
@@ -5482,11 +5598,16 @@
 
       function buildRequestPayload(accessToken) {
         const directMode = isAllNoProxy();
-        const checkoutProxy = directMode ? "" : ($("checkoutProxy").value.trim() || defaultCheckoutProxy());
+        if (!directMode) {
+          syncProxyFields();
+        }
+        const checkoutProxy = directMode
+          ? ""
+          : ensureJpCheckoutProxy($("checkoutProxy").value.trim() || defaultCheckoutProxy());
         const providerProxy = directMode ? "" : $("providerProxy").value.trim();
         const approveRegion = approveRegionForRequest();
-        const base = directMode ? "" : ($("quickProxy").value.trim() || checkoutProxy);
-        const approveProxy = directMode ? "" : proxyForRegion(base, approveRegion);
+        const approveBase = checkoutProxy || providerProxy;
+        const approveProxy = directMode ? "" : proxyForRegion(approveBase, approveRegion);
         return {
           accessToken,
           proxy: checkoutProxy,
@@ -5507,6 +5628,7 @@
           paymentStrategy: paypalPaymentStrategy(),
           fetchBaToken: fetchBaTokenEnabled(),
           allNoProxy: isAllNoProxy(),
+          allJpProxy: isAllJpProxy(),
           taskId: currentTaskId,
         };
       }
@@ -5561,13 +5683,28 @@
         return `${prefix}代理检测失败：${item.error || "未知错误"}`;
       }
 
-      function runtimeProxyPayload() {
+      function proxyCheckPayload(stage = "") {
+        if (!isAllNoProxy()) {
+          syncProxyFields();
+        }
+        const directMode = isAllNoProxy();
+        const checkoutProxy = directMode ? "" : ensureJpCheckoutProxy($("checkoutProxy").value.trim());
+        const providerProxy = directMode ? "" : $("providerProxy").value.trim();
         return {
+          stage: stage || "",
           link_type: $("linkType").value,
-          proxy: $("checkoutProxy").value.trim(),
-          checkout_proxy: $("checkoutProxy").value.trim(),
-          provider_proxy: $("providerProxy").value.trim(),
+          proxy: checkoutProxy,
+          proxy_input: stage === "provider" ? providerProxy : checkoutProxy,
+          checkout_proxy: checkoutProxy,
+          provider_proxy: providerProxy,
+          billing_country: $("billingCountry").value || DEFAULT_BILLING_COUNTRY,
+          all_jp_proxy: isAllJpProxy(),
+          all_no_proxy: directMode,
         };
+      }
+
+      function runtimeProxyPayload() {
+        return proxyCheckPayload("");
       }
 
       async function checkProxyStage(stage) {
@@ -5582,14 +5719,7 @@
           const response = await fetch("/api/check-proxy", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              stage,
-              link_type: linkType,
-              proxy: $("checkoutProxy").value.trim(),
-              proxy_input: stage === "provider" ? $("providerProxy").value.trim() : $("checkoutProxy").value.trim(),
-              checkout_proxy: $("checkoutProxy").value.trim(),
-              provider_proxy: $("providerProxy").value.trim(),
-            }),
+            body: JSON.stringify(proxyCheckPayload(stage)),
           });
           const data = await response.json().catch(() => ({}));
           if (!response.ok) {
@@ -5749,7 +5879,37 @@
         principleModal.setAttribute("aria-hidden", "true");
       }
 
-      async function readStream(response) {
+      function createStreamTimeoutManager(abortController) {
+        const startedAt = Date.now();
+        let idleTimer = null;
+        const clear = () => {
+          if (idleTimer) window.clearTimeout(idleTimer);
+          idleTimer = null;
+        };
+        const bump = () => {
+          clear();
+          if (Date.now() - startedAt > STREAM_MAX_TIMEOUT_MS) {
+            abortController.abort();
+            return;
+          }
+          idleTimer = window.setTimeout(() => abortController.abort(), STREAM_IDLE_TIMEOUT_MS);
+        };
+        bump();
+        return { bump, clear };
+      }
+
+      function formatStreamError(error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return "流式连接已中断（approve 阶段可能仍在后台运行）。请稍后重试，或检查代理与 session 是否有效。";
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        if (/BodyStreamBuffer was aborted|aborted/i.test(message)) {
+          return "流式连接已中断（approve 请求池耗时较长或网络断开）。已放宽超时，请刷新页面后重试。";
+        }
+        return message;
+      }
+
+      async function readStream(response, onStreamActivity = null) {
         if (!response.body) throw new Error("浏览器不支持流式响应读取。");
         const reader = response.body.getReader();
         activeStreamReader = reader;
@@ -5757,51 +5917,12 @@
         let buffer = "";
         let finalResult = null;
 
-        try {
-        while (true) {
-          if (taskTerminated) {
-            await reader.cancel();
-            throw new Error("任务已终止。");
+        const handleStreamEvent = (event) => {
+          if (event.type === "heartbeat") {
+            onStreamActivity?.();
+            return;
           }
-          const { value, done } = await reader.read();
-          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            const event = JSON.parse(line);
-            if (event.type === "result") {
-              finalResult = event.data || {};
-              applyRetryHistory(finalResult.retry_history, finalResult);
-              appendLog({
-                type: "result",
-                step: "done",
-                message: finalResult.ok ? "已收到最终结果。" : "已收到最终失败结果。",
-                ts: event.ts,
-                data: {
-                  attempt: finalResult.attempt_count || 1,
-                  max_attempts: finalResult.max_attempts || 1,
-                  ok: finalResult.ok,
-                  fallback: finalResult.fallback,
-                },
-              });
-            } else if (event.type === "error") {
-              appendLog(event);
-              throw new Error(event.message || "请求失败");
-            } else if (event.type === "cancelled") {
-              appendLog(event);
-              throw new Error(event.message || "任务已终止。");
-            } else {
-              appendLog(event);
-            }
-          }
-
-          if (done) break;
-        }
-
-        if (buffer.trim()) {
-          const event = JSON.parse(buffer);
+          onStreamActivity?.();
           if (event.type === "result") {
             finalResult = event.data || {};
             applyRetryHistory(finalResult.retry_history, finalResult);
@@ -5817,19 +5938,45 @@
                 fallback: finalResult.fallback,
               },
             });
-          } else if (event.type === "error") {
+            return;
+          }
+          if (event.type === "error") {
             appendLog(event);
             throw new Error(event.message || "请求失败");
-          } else if (event.type === "cancelled") {
+          }
+          if (event.type === "cancelled") {
             appendLog(event);
             throw new Error(event.message || "任务已终止。");
-          } else {
-            appendLog(event);
           }
-        }
+          appendLog(event);
+        };
 
-        if (!finalResult) throw new Error("服务端未返回最终结果。");
-        return finalResult;
+        try {
+          while (true) {
+            if (taskTerminated) {
+              await reader.cancel();
+              throw new Error("任务已终止。");
+            }
+            const { value, done } = await reader.read();
+            onStreamActivity?.();
+            buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              handleStreamEvent(JSON.parse(line));
+            }
+
+            if (done) break;
+          }
+
+          if (buffer.trim()) {
+            handleStreamEvent(JSON.parse(buffer));
+          }
+
+          if (!finalResult) throw new Error("服务端未返回最终结果。");
+          return finalResult;
         } finally {
           if (activeStreamReader === reader) activeStreamReader = null;
         }
@@ -5935,7 +6082,7 @@
 
         const abortController = new AbortController();
         activeStreamAbortController = abortController;
-        const timeoutId = window.setTimeout(() => abortController.abort(), LINK_TIMEOUT_MS);
+        const streamTimeout = createStreamTimeoutManager(abortController);
         try {
           const response = await fetch("/api/long-link/stream", {
             method: "POST",
@@ -5948,16 +6095,16 @@
             throw new Error(text || "请求失败");
           }
 
-          const data = await readStream(response);
+          const data = await readStream(response, () => streamTimeout.bump());
           renderResult(data);
           if (shouldTrackEmailStats()) {
             recordEmailStats(currentRunHadEmail, Boolean(data.ok));
           }
           setStatus(data.ok ? "生成完成。" : (data.fallback ? "提链失败，已返回 hosted 长链。" : "提链失败。"), !data.ok);
         } catch (error) {
-          window.clearTimeout(timeoutId);
+          streamTimeout.clear();
           currentLongUrl = "";
-          const message = error instanceof Error ? error.message : String(error);
+          const message = formatStreamError(error);
           if (!retryState) resetRetryState(clampMaxRetries($("maxRetries").value));
           retryState.final = true;
           retryState.summary = `任务失败：${message}`;
@@ -5967,7 +6114,7 @@
           }
           setStatus(message, true);
         } finally {
-          window.clearTimeout(timeoutId);
+          streamTimeout.clear();
           activeStreamAbortController = null;
           if (!taskTerminated) {
             finalizeTaskElapsed();
@@ -5998,6 +6145,7 @@
         updateCurrency();
         loadPaneRatio();
         bindPaneResize();
+        renderJpProxyPickerOptions();
         loadProxyConfig();
         renderEmailStats();
         renderPrinciple();
@@ -6013,24 +6161,21 @@
       initializeApp();
 
       $("accessToken").addEventListener("input", updateTokenMeta);
-      $("quickProxy").addEventListener("input", applyQuickProxyState);
-      $("approveProxyRegion").addEventListener("change", applyQuickProxyState);
+      $("approveProxyRegion").addEventListener("change", () => syncProxyFields());
       $("allJpProxy").addEventListener("change", () => {
-        if ($("allJpProxy").checked) $("allNoProxy").checked = false;
-        updateProxyModeUi();
-        applyQuickProxyState();
-        $("providerProxyHint").textContent = providerProxyHintText();
+        void handleAllJpProxyToggle();
       });
-      $("allNoProxy").addEventListener("change", () => {
-        if ($("allNoProxy").checked) $("allJpProxy").checked = false;
-        updateProxyModeUi();
-        applyQuickProxyState();
-        $("providerProxyHint").textContent = providerProxyHintText();
+      $("allNoProxy").addEventListener("change", handleAllNoProxyToggle);
+      $("customProxy").addEventListener("change", handleCustomProxyToggle);
+      $("providerProxy").addEventListener("input", () => {
+        if (isCustomProxy()) syncProxyFields();
+      });
+      $("checkoutProxy").addEventListener("blur", () => {
+        if (isCustomProxy()) syncProxyFields();
       });
       $("billingCountry").addEventListener("change", () => {
         updateCurrency();
-        syncPaypalProxyFields();
-        applyQuickProxyState();
+        syncProxyFields();
       });
       $("maxRetries").addEventListener("change", () => {
         const value = clampMaxRetries($("maxRetries").value);
@@ -6059,14 +6204,25 @@
       $("showPrinciple").addEventListener("click", openPrinciple);
       $("showPrincipleInline").addEventListener("click", openPrinciple);
       $("closePrinciple").addEventListener("click", closePrinciple);
-      fetchBrowserSessionButton.addEventListener("click", fetchBrowserSession);
+      $("closeJpProxyPicker").addEventListener("click", () => closeJpProxyPicker(null));
+      jpProxyPickerModal?.addEventListener("click", (event) => {
+        if (event.target === jpProxyPickerModal) closeJpProxyPicker(null);
+      });
+      copyAccessTokenButton.addEventListener("click", () => {
+        void copyAccessToken();
+      });
       openSessionPageButton.addEventListener("click", openSessionPage);
       copySessionUrlButton.addEventListener("click", copySessionUrl);
       principleModal.addEventListener("click", (event) => {
         if (event.target === principleModal) closePrinciple();
       });
       document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && principleModal.classList.contains("show")) closePrinciple();
+        if (event.key !== "Escape") return;
+        if (jpProxyPickerModal?.classList.contains("show")) {
+          closeJpProxyPicker(null);
+          return;
+        }
+        if (principleModal.classList.contains("show")) closePrinciple();
       });
       checkCheckoutProxyButton.addEventListener("click", () => checkProxyStage("checkout"));
       checkProviderProxyButton.addEventListener("click", () => checkProxyStage("provider"));

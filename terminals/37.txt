@@ -5,7 +5,7 @@ command: "$root = \"D:\\nanno\\Gpt_Plus\\转长链\\GPT-FULL-REGIST-AND-PAYMENT-
 Set-Location $root
 py full_flow_web.py --host 127.0.0.1 --port 8766"
 started_at: 2026-06-09T11:36:00.828Z
-running_for_ms: 12170007 
+running_for_ms: 26455000 
 ---
 [flow-web] serving http://127.0.0.1:8766 db=D:\nanno\Gpt_Plus\转长链\GPT-FULL-REGIST-AND-PAYMENT-FLOW\accfile\pool\full_flow.sqlite3
 127.0.0.1 - - [09/Jun/2026 19:36:04] "GET /api/health HTTP/1.1" 200 -

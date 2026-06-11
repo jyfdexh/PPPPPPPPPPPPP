@@ -1341,6 +1341,47 @@ class ProxyCheckTests(unittest.TestCase):
 
         self.assertEqual(app.provider_stage_proxy(req), "http://provider.proxy:9100")
 
+    def test_apply_payment_strategy_all_jp_keeps_provider_on_billing_region(self) -> None:
+        req = app.apply_payment_strategy(
+            app.LongLinkRequest(
+                accessToken="tok_test",
+                link_type="paypal",
+                billing_country="DE",
+                payment_strategy="jp_de",
+                checkout_proxy="http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010",
+                provider_proxy="http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010",
+                all_jp_proxy=True,
+                all_no_proxy=False,
+            )
+        )
+
+        self.assertIn("region-JP", req.checkout_proxy)
+        self.assertIn("region-JP", req.provider_proxy)
+        self.assertIn("region-JP", req.approve_proxy)
+
+    def test_provider_stage_proxy_uses_jp_when_all_jp_proxy_enabled(self) -> None:
+        req = app.LongLinkRequest(
+            accessToken="tok_test",
+            link_type="paypal",
+            billing_country="US",
+            checkout_proxy="socks5://bj2m1188418-region-jp:nanno2@us.cliproxy.io:3010",
+            all_jp_proxy=True,
+            all_no_proxy=False,
+        )
+
+        with patch.object(app, "PROVIDER_STAGE_PROXY", ""):
+            self.assertEqual(
+                app.provider_stage_proxy(req),
+                "socks5://bj2m1188418-region-JP:nanno2@us.cliproxy.io:3010",
+            )
+
+        de_req = req.model_copy(update={"billing_country": "DE", "payment_strategy": "jp_de"})
+        with patch.object(app, "PROVIDER_STAGE_PROXY", ""):
+            self.assertEqual(
+                app.provider_stage_proxy(de_req),
+                "socks5://bj2m1188418-region-JP:nanno2@us.cliproxy.io:3010",
+            )
+
     def test_paypal_billing_uses_us_address(self) -> None:
         from billing_pools import US_BILLING_STREETS
 

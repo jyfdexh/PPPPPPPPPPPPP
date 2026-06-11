@@ -67,6 +67,20 @@ class PublicPayPalInputTests(unittest.TestCase):
         self.assertEqual(inner.payment_locale, "en")
         self.assertEqual(inner.payment_strategy, "jp_us")
 
+    def test_public_request_allows_au_profile_override(self) -> None:
+        req = app.PublicPayPalLinkRequest(
+            session="tok_page_defaults",
+            billingCountry="AU",
+            paymentLocale="en",
+            paymentStrategy="jp_au",
+        )
+
+        inner = app.build_public_paypal_request(req)
+
+        self.assertEqual(inner.billing_country, "AU")
+        self.assertEqual(inner.payment_locale, "en")
+        self.assertEqual(inner.payment_strategy, "jp_au")
+
 
 if __name__ == "__main__":
     unittest.main()

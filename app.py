@@ -20,7 +20,14 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from billing_pools import DE_BILLING_NAMES, DE_BILLING_STREETS, US_BILLING_NAMES, US_BILLING_STREETS
+from billing_pools import (
+    AU_BILLING_NAMES,
+    AU_BILLING_STREETS,
+    DE_BILLING_NAMES,
+    DE_BILLING_STREETS,
+    US_BILLING_NAMES,
+    US_BILLING_STREETS,
+)
 
 try:
     from curl_cffi.requests import Session as CurlCffiSession  # type: ignore
@@ -81,15 +88,18 @@ INDONESIA_BILLING_STREETS = [
     ("Jl. Basuki Rahmat No. 5", "Surabaya", "Jawa Timur", "60271"),
 ]
 COUNTRY_CURRENCY = {
+    "AE": "AED",
     "AT": "EUR",
     "AU": "AUD",
     "BE": "EUR",
     "BR": "BRL",
     "CA": "CAD",
     "CH": "CHF",
+    "CO": "COP",
     "CZ": "CZK",
     "DE": "EUR",
     "DK": "DKK",
+    "EG": "EGP",
     "ES": "EUR",
     "FI": "EUR",
     "FR": "EUR",
@@ -97,6 +107,7 @@ COUNTRY_CURRENCY = {
     "HK": "HKD",
     "ID": "IDR",
     "IE": "EUR",
+    "IL": "ILS",
     "IN": "INR",
     "IT": "EUR",
     "JP": "JPY",
@@ -109,12 +120,14 @@ COUNTRY_CURRENCY = {
     "PH": "PHP",
     "PL": "PLN",
     "PT": "EUR",
+    "RO": "RON",
     "SE": "SEK",
     "SG": "SGD",
     "TH": "THB",
     "TW": "TWD",
     "US": "USD",
     "VN": "VND",
+    "ZA": "ZAR",
 }
 PAYMENT_STRATEGY_PROFILES: dict[str, dict[str, str]] = {
     "jp_us": {
@@ -133,7 +146,41 @@ PAYMENT_STRATEGY_PROFILES: dict[str, dict[str, str]] = {
         "stripe_timezone": "Europe/Berlin",
         "accept_language": "de-DE,de;q=0.9,en;q=0.8",
     },
+    "jp_au": {
+        "billing_country": "AU",
+        "payment_locale": "en",
+        "checkout_region": "JP",
+        "provider_region": "AU",
+        "stripe_timezone": "Australia/Sydney",
+        "accept_language": "en-AU,en;q=0.9",
+    },
 }
+# 这批地区允许出现在 PayPal 下拉；除 DE/AU 外，默认复用 US 画像与代理策略。
+PAYPAL_BILLING_COUNTRIES = frozenset(
+    {
+        "US",
+        "IN",
+        "EG",
+        "ID",
+        "TH",
+        "MX",
+        "CO",
+        "ZA",
+        "DE",
+        "FR",
+        "IT",
+        "ES",
+        "NL",
+        "DK",
+        "CA",
+        "AU",
+        "NZ",
+        "KR",
+        "AE",
+        "IL",
+        "RO",
+    }
+)
 LOCALE_MAP = {
     "de": ("de-DE", "de"),
     "en": ("en-US", "en"),
@@ -478,12 +525,16 @@ def provider_stage_proxy(req: Any) -> str:
     region_base = base_proxy if "region-" in base_proxy else DEFAULT_PROXY
     if link_type == "paypal":
         billing_country = normalize_country(getattr(req, "billing_country", None) or "US")
-        if billing_country == "DE":
-            provider_region = "DE"
-        elif all_jp_proxy_enabled(req):
+        # 全程 JP 模式以用户显式策略为准，三段代理统一走日本出口。
+        if all_jp_proxy_enabled(req):
             provider_region = "JP"
+        elif billing_country == "DE":
+            provider_region = "DE"
+        elif billing_country == "AU":
+            provider_region = "AU"
         else:
-            provider_region = billing_country if billing_country in COUNTRY_CURRENCY else "US"
+            # 新增 PayPal 地区默认复用 US provider 逻辑，避免走各自本地出口。
+            provider_region = "US"
         return proxy_for_region(region_base, provider_region)
     if all_jp_proxy_enabled(req):
         return proxy_for_region(region_base, "JP")
@@ -505,10 +556,28 @@ def normalize_country(country: str) -> str:
 
 def country_zh(country: str) -> str:
     mapping = {
+        "AE": "阿联酋",
+        "AU": "澳大利亚",
+        "CA": "加拿大",
+        "CO": "哥伦比亚",
         "DE": "德国",
-        "ID": "Indonesia",
-        "JP": "Japan",
-        "US": "United States",
+        "DK": "丹麦",
+        "EG": "埃及",
+        "ES": "西班牙",
+        "FR": "法国",
+        "ID": "印尼",
+        "IL": "以色列",
+        "IN": "印度",
+        "IT": "意大利",
+        "JP": "日本",
+        "KR": "韩国",
+        "MX": "墨西哥",
+        "NL": "荷兰",
+        "NZ": "新西兰",
+        "RO": "罗马尼亚",
+        "TH": "泰国",
+        "US": "美国",
+        "ZA": "南非",
     }
     return mapping.get(str(country or "").strip().upper(), "")
 
@@ -730,17 +799,24 @@ def normalize_payment_strategy(value: Any) -> str:
         "jp_de": "jp_de",
         "jp_de_billing": "jp_de",
         "de_billing_us_provider": "jp_de",
+        "au": "jp_au",
+        "jp_au": "jp_au",
+        "jpau": "jp_au",
     }
     return aliases.get(strategy, strategy if strategy in PAYMENT_STRATEGY_PROFILES else "jp_us")
 
 
 def paypal_strategy_for_billing(billing_country: str) -> str:
-    return "jp_de" if normalize_country(billing_country) == "DE" else "jp_us"
+    country = normalize_country(billing_country)
+    return {
+        "DE": "jp_de",
+        "AU": "jp_au",
+    }.get(country, "jp_us")
 
 
 def normalize_approve_proxy_region(value: Any) -> str:
     region = str(value or "JP").strip().upper()
-    return region if region in {"JP", "US", "DE"} else "JP"
+    return region if region in {"JP", "US", "DE", "AU"} else "JP"
 
 
 def stripe_timezone_for_req(req: LongLinkRequest) -> str:
@@ -750,6 +826,8 @@ def stripe_timezone_for_req(req: LongLinkRequest) -> str:
     country = effective_country(req)
     if country == "DE":
         return "Europe/Berlin"
+    if country == "AU":
+        return "Australia/Sydney"
     if country == "JP":
         return "Asia/Tokyo"
     return "Asia/Shanghai"
@@ -780,11 +858,13 @@ def apply_payment_strategy(req: LongLinkRequest) -> LongLinkRequest:
     if normalize_link_type(req.link_type) != "paypal":
         return req
     billing = normalize_country(req.billing_country or "US")
-    if billing not in {"US", "DE"}:
+    if billing not in PAYPAL_BILLING_COUNTRIES:
         billing = "US"
     strategy = normalize_payment_strategy(req.payment_strategy or paypal_strategy_for_billing(billing))
     if billing == "DE":
         strategy = "jp_de"
+    elif billing == "AU":
+        strategy = "jp_au"
     elif billing == "US":
         strategy = "jp_us"
     profile = PAYMENT_STRATEGY_PROFILES.get(strategy) or PAYMENT_STRATEGY_PROFILES["jp_us"]
@@ -1294,6 +1374,9 @@ def billing_for_link_type(link_type: str, country: str = "US") -> dict[str, str]
         if billing_country == "DE":
             first_name, last_name = random.choice(DE_BILLING_NAMES)
             line1, city, state, postal_code = random.choice(DE_BILLING_STREETS)
+        elif billing_country == "AU":
+            first_name, last_name = random.choice(AU_BILLING_NAMES)
+            line1, city, state, postal_code = random.choice(AU_BILLING_STREETS)
         elif billing_country == "JP":
             first_name, last_name = random.choice(JAPAN_BILLING_NAMES)
             line1, city, state, postal_code = random.choice(JAPAN_BILLING_STREETS)
@@ -2730,9 +2813,9 @@ def normalize_proxy_probe_payload(data: dict[str, Any]) -> dict[str, str]:
     country = str(data.get("country") or data.get("countryCode") or "").strip()
     country_code = str(data.get("countryCode") or "").strip().upper()
     country_display_map = {
-        "JP": "Japan（日本）",
-        "US": "United States（美国）",
-        "ID": "Indonesia（印尼）",
+        "JP": "日本（JP）",
+        "US": "美国（US）",
+        "ID": "印尼（ID）",
     }
     if not country_code and len(country) == 2:
         country_code = country.upper()
@@ -5074,6 +5157,8 @@ def build_ui_config(profile: str | None = None) -> dict[str, Any]:
         proxy_presets = [
             proxy_for_region(base_proxy, "JP"),
             proxy_for_region(base_proxy, "US"),
+            proxy_for_region(base_proxy, "DE"),
+            proxy_for_region(base_proxy, "AU"),
         ]
     return {
         "profile": current_profile,
@@ -5171,7 +5256,8 @@ def generate_long_link_once(
     stripe_init_proxy = ""
     provider_stripe = None
     if link_type in {"paypal", "gopay"}:
-        # Stripe payment_pages 与账单地区绑定，init/confirm 必须走 provider 出口（DE/US），checkout 仅用于 ChatGPT 创建 cs。
+        # 常规模式下 Stripe payment_pages 与账单地区绑定，init/confirm 应走 provider 出口；
+        # 勾选全程 JP 时尊重用户的统一 JP 策略。checkout 仅用于 ChatGPT 创建 cs。
         stripe_init_proxy = provider_proxy or checkout_proxy
         post_checkout_proxy = provider_proxy or checkout_proxy
         provider_stripe = build_stripe_session(req, proxy_override=stripe_init_proxy)
@@ -5252,7 +5338,7 @@ def generate_long_link_once(
                     "chatgpt_approve",
                     (
                         "Stripe confirm 未进入 requires_approval，已跳过 approve 请求池。"
-                        "全程 JP 模式下 Provider 仍应按账单地区（DE/US）出口，请检查 Provider 代理 region。"
+                        "若勾选全程 JP，Provider 应为 region-JP；若未勾选，则 DE 应为 region-DE、AU 应为 region-AU，其余账单地区按 region-US 出口。"
                     ),
                     {
                         "approve_result": "skipped",

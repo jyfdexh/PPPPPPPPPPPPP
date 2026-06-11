@@ -3031,7 +3031,7 @@
           <div class="guide-panel">
             <div>
               <label style="margin-bottom: 4px">PP 链原理概览</label>
-              <p id="guideSummary">默认全程无代理直连。取消无代理后可配置 checkout / provider / approve 代理；未勾无代理时 provider 随 DE 账单走德国出口。</p>
+              <p id="guideSummary">默认全程无代理直连。取消无代理后可配置 checkout / provider / approve 代理；普通/自定义模式下 provider 默认随账单地区切换，勾选全程 JP 后三段统一走日本出口。</p>
             </div>
             <button id="showPrincipleInline" class="secondary" type="button">展开详细原理</button>
           </div>
@@ -3151,6 +3151,8 @@
 
     <script>
       const COUNTRIES = [
+        ["AE", "阿联酋 AE", "AED"],
+        ["EG", "埃及 EG", "EGP"],
         ["US", "美国 US", "USD"],
         ["GB", "英国 GB", "GBP"],
         ["CA", "加拿大 CA", "CAD"],
@@ -3160,6 +3162,7 @@
         ["HK", "中国香港 HK", "HKD"],
         ["TW", "中国台湾 TW", "TWD"],
         ["KR", "韩国 KR", "KRW"],
+        ["IL", "以色列 IL", "ILS"],
         ["ID", "印度尼西亚 ID", "IDR"],
         ["MY", "马来西亚 MY", "MYR"],
         ["TH", "泰国 TH", "THB"],
@@ -3183,8 +3186,11 @@
         ["PL", "波兰 PL", "PLN"],
         ["CZ", "捷克 CZ", "CZK"],
         ["MX", "墨西哥 MX", "MXN"],
+        ["CO", "哥伦比亚 CO", "COP"],
         ["BR", "巴西 BR", "BRL"],
         ["NZ", "新西兰 NZ", "NZD"],
+        ["RO", "罗马尼亚 RO", "RON"],
+        ["ZA", "南非 ZA", "ZAR"],
       ];
 
       const LOCKED_COUNTRY_BY_TYPE = {
@@ -3395,8 +3401,27 @@
       };
       let runtimeUiConfig = { ...DEFAULT_UI_CONFIG, proxy_defaults: { ...DEFAULT_UI_CONFIG.proxy_defaults } };
       const PAYPAL_COUNTRIES = [
-        ["DE", "德国 DE", "EUR"],
         ["US", "美国 US", "USD"],
+        ["IN", "印度 IN", "INR"],
+        ["EG", "埃及 EG", "EGP"],
+        ["ID", "印度尼西亚 ID", "IDR"],
+        ["TH", "泰国 TH", "THB"],
+        ["MX", "墨西哥 MX", "MXN"],
+        ["CO", "哥伦比亚 CO", "COP"],
+        ["ZA", "南非 ZA", "ZAR"],
+        ["DE", "德国 DE", "EUR"],
+        ["FR", "法国 FR", "EUR"],
+        ["IT", "意大利 IT", "EUR"],
+        ["ES", "西班牙 ES", "EUR"],
+        ["NL", "荷兰 NL", "EUR"],
+        ["DK", "丹麦 DK", "DKK"],
+        ["CA", "加拿大 CA", "CAD"],
+        ["AU", "澳大利亚 AU", "AUD"],
+        ["NZ", "新西兰 NZ", "NZD"],
+        ["KR", "韩国 KR", "KRW"],
+        ["AE", "阿联酋 AE", "AED"],
+        ["IL", "以色列 IL", "ILS"],
+        ["RO", "罗马尼亚 RO", "RON"],
       ];
       const DEFAULT_BILLING_COUNTRY = "DE";
       const STREAM_IDLE_TIMEOUT_MS = 120000;
@@ -3406,7 +3431,10 @@
       const DEFAULT_APPROVE_RETRIES = 10;
       const DEFAULT_APPROVE_ATTEMPT_COUNT = 10;
       function paypalPaymentStrategy() {
-        return $("billingCountry").value === "DE" ? "jp_de" : "jp_us";
+        const billing = $("billingCountry").value;
+        if (billing === "DE") return "jp_de";
+        if (billing === "AU") return "jp_au";
+        return "jp_us";
       }
       const DEFAULT_PANE_RATIO = 0.5;
       const MIN_PANE_RATIO = 0.28;
@@ -3648,9 +3676,10 @@
 
       function providerRegionForBilling(billing) {
         if (isAllNoProxy()) return "direct";
-        if (isCustomProxy()) return "JP";
         if (isAllJpProxy()) return "JP";
-        return billing === "DE" ? "DE" : "US";
+        if (billing === "DE") return "DE";
+        if (billing === "AU") return "AU";
+        return "US";
       }
 
       function approveRegionForRequest() {
@@ -3710,26 +3739,39 @@
 
       function syncProxyFields() {
         const billing = $("billingCountry").value || DEFAULT_BILLING_COUNTRY;
+        const providerField = $("providerProxy");
         $("paymentLocale").value = billing === "DE" ? "de" : "en";
         if (isAllNoProxy()) {
           $("checkoutProxy").value = "";
-          $("providerProxy").value = "";
+          providerField.value = "";
+          providerField.dataset.autoDerived = "false";
         } else if (isCustomProxy()) {
-          const provider = $("providerProxy").value.trim();
+          const provider = providerField.value.trim();
           const checkout = $("checkoutProxy").value.trim();
+          let normalizedCheckout = "";
           if (provider && !checkout) {
-            $("checkoutProxy").value = deriveCheckoutFromProvider(provider);
+            normalizedCheckout = deriveCheckoutFromProvider(provider);
           } else if (checkout) {
-            $("checkoutProxy").value = ensureJpCheckoutProxy(checkout);
+            normalizedCheckout = ensureJpCheckoutProxy(checkout);
+          }
+          if (normalizedCheckout) {
+            $("checkoutProxy").value = normalizedCheckout;
+            // 自定义模式下如未手填 provider，默认跟随当前账单地区出口。
+            if (!provider || providerField.dataset.autoDerived === "true") {
+              providerField.value = proxyForRegion(normalizedCheckout, providerRegionForBilling(billing));
+              providerField.dataset.autoDerived = "true";
+            }
           }
         } else if (isAllJpProxy()) {
           const base = $("checkoutProxy").value.trim() || $("providerProxy").value.trim() || defaultCheckoutProxy();
           $("checkoutProxy").value = ensureJpCheckoutProxy(base);
-          $("providerProxy").value = proxyForRegion(base, providerRegionForBilling(billing));
+          providerField.value = proxyForRegion(base, providerRegionForBilling(billing));
+          providerField.dataset.autoDerived = "true";
         } else {
           const base = $("checkoutProxy").value.trim() || defaultCheckoutProxy();
           $("checkoutProxy").value = ensureJpCheckoutProxy(base);
-          $("providerProxy").value = proxyForRegion(base, providerRegionForBilling(billing));
+          providerField.value = proxyForRegion(base, providerRegionForBilling(billing));
+          providerField.dataset.autoDerived = "true";
         }
         updateProxyFieldAvailability();
         updateProxyModeUi();
@@ -3756,7 +3798,7 @@
       function providerProxyHintText() {
         if (isAllNoProxy()) return "全程无代理：checkout / provider / approve 均直连本机出口。";
         if (isAllJpProxy()) return "全程 JP：Checkout / Provider / approve 统一走 region-JP 日本出口。";
-        if (isCustomProxy()) return "自定义模式：可只填 Provider，Checkout 会自动改为 region-JP。";
+        if (isCustomProxy()) return "自定义模式：可只填 Provider，Checkout 会自动改为 region-JP；未手填 Provider 时默认跟随地区出口。";
         return "Checkout 固定日本出口；Provider 按地区/Approve 出口自动切换 region。";
       }
 
@@ -3780,8 +3822,8 @@
             : allJp
               ? "已启用全程 JP：Checkout / Provider / approve 统一走 region-JP。"
               : custom
-                ? "已启用自定义代理：Checkout 固定日本出口，可单独填写 Provider。"
-                : "Checkout 固定日本出口；Provider 按所选 Approve 出口地区切换。";
+                ? "已启用自定义代理：Checkout 固定日本出口，Provider 默认跟随账单地区，可单独覆盖。"
+                : "Checkout 固定日本出口；Provider 按账单地区切换，Approve 按所选地区切换。";
         }
         $("providerProxyHint").textContent = providerProxyHintText();
       }
@@ -5837,14 +5879,14 @@
       function principleSections() {
         return {
           title: "PP 链生成原理",
-          intro: "PP 链通过真实 checkout 与 Stripe 支付流程解析 PayPal BA 长链。默认 DE 账单 + provider 德国出口；可勾选全程 JP 统一三段代理。",
+          intro: "PP 链通过真实 checkout 与 Stripe 支付流程解析 PayPal BA 长链。默认 DE 账单 + provider 德国出口；新增地区默认复用 US 逻辑，自定义模式下 provider 也会随该逻辑切换。",
           sections: [
             ["读取输入", "前端解析 access_token，读取 checkout / provider / approve 代理与账单地区（默认 DE）。"],
-            ["创建 ChatGPT checkout", "后端用固定 JP checkout 代理请求 ChatGPT `/backend-api/payments/checkout`，账单地区可选 US/DE（对应 USD/EUR）。"],
-            ["使用 provider / approve 代理", "Stripe init/confirm 默认用 provider 代理（DE/US）；approve 默认 JP；勾选全程 JP 后三段均为日本出口。"],
+            ["创建 ChatGPT checkout", "后端用固定 JP checkout 代理请求 ChatGPT `/backend-api/payments/checkout`，账单地区可选下拉中的已验证国家，并继续使用各自币种。"],
+            ["使用 provider / approve 代理", "Stripe init/confirm 默认用 provider 代理；DE 走 DE、AU 走 AU，其余新增地区按 US 逻辑走 region-US；approve 默认 JP；勾选全程 JP 后三段均为日本出口。"],
             ["初始化 Stripe payment page", "拿到 `cs_id` 以后，后端用 provider 代理请求 Stripe `POST /v1/payment_pages/{cs_id}/init`，返回 `stripe_hosted_url`、`config_id`、`init_checksum` 等上下文。"],
             ["生成 hosted 长链", "后端把 `checkout.stripe.com` 返回的 hosted URL 改写成 `pay.openai.com` 长链。即使后面的 PP 提取失败，也能回退用这条 hosted 长链。"],
-            ["生成账单资料", "按所选 US/DE 从地址池随机生成 ASCII 安全姓名与街道，避免 PayPal setup intent 因账单国家不一致被拒。"],
+            ["生成账单资料", "DE/AU 使用各自地址池，其余新增地区复用 US 地址池生成 ASCII 安全姓名与街道，避免 PayPal setup intent 因账单国家不一致被拒。"],
             ["创建 PayPal payment method", "后端向 Stripe `POST /v1/payment_methods`，`type=paypal`，生成 `pm_xxx`。这一步本质上是先把 PayPal 支付方式挂到当前 checkout。"],
             ["Confirm checkout", "后端再请求 Stripe `POST /v1/payment_pages/{cs_id}/confirm`。这一步会让 Stripe 开始准备 PayPal 跳转。"],
             ["可选 ChatGPT approve", "如果 Stripe 返回 `requires_approval`，后端会回到 ChatGPT 侧先做 sentinel ping，再调用 `/backend-api/payments/checkout/approve`，然后继续取 redirect。"],
@@ -6168,6 +6210,7 @@
       $("allNoProxy").addEventListener("change", handleAllNoProxyToggle);
       $("customProxy").addEventListener("change", handleCustomProxyToggle);
       $("providerProxy").addEventListener("input", () => {
+        $("providerProxy").dataset.autoDerived = "false";
         if (isCustomProxy()) syncProxyFields();
       });
       $("checkoutProxy").addEventListener("blur", () => {

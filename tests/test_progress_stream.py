@@ -1341,7 +1341,7 @@ class ProxyCheckTests(unittest.TestCase):
 
         self.assertEqual(app.provider_stage_proxy(req), "http://provider.proxy:9100")
 
-    def test_apply_payment_strategy_all_jp_keeps_provider_on_billing_region(self) -> None:
+    def test_apply_payment_strategy_all_jp_uses_jp_for_all_stages(self) -> None:
         req = app.apply_payment_strategy(
             app.LongLinkRequest(
                 accessToken="tok_test",
@@ -1403,6 +1403,71 @@ class ProxyCheckTests(unittest.TestCase):
         self.assertIn(billing["name"], valid_names)
         self.assertTrue(billing["line1"].isascii())
         self.assertTrue(billing["name"].isascii())
+
+    def test_paypal_billing_au_uses_au_address_pool(self) -> None:
+        from billing_pools import AU_BILLING_NAMES, AU_BILLING_STREETS
+
+        billing = app.billing_for_link_type("paypal", country="AU")
+        valid_states = {street[2] for street in AU_BILLING_STREETS}
+        valid_names = {f"{first} {last}" for first, last in AU_BILLING_NAMES}
+
+        self.assertEqual(billing["country"], "AU")
+        self.assertIn(billing["state"], valid_states)
+        self.assertIn(billing["name"], valid_names)
+        self.assertTrue(billing["line1"].isascii())
+        self.assertTrue(billing["name"].isascii())
+
+    def test_apply_payment_strategy_au_profile(self) -> None:
+        req = app.apply_payment_strategy(
+            app.LongLinkRequest(
+                accessToken="tok_test",
+                link_type="paypal",
+                billing_country="AU",
+                payment_strategy="jp_au",
+                checkout_proxy="http://bj2m1188418-region-JP:nanno2@127.0.0.1:3010",
+                all_jp_proxy=False,
+                all_no_proxy=False,
+            )
+        )
+
+        self.assertEqual(req.billing_country, "AU")
+        self.assertEqual(req.payment_strategy, "jp_au")
+        self.assertEqual(req.payment_locale, "en")
+        self.assertEqual(req.stripe_timezone, "Australia/Sydney")
+        self.assertIn("region-AU", req.provider_proxy)
+        self.assertIn("region-JP", req.checkout_proxy)
+
+    def test_provider_stage_proxy_uses_au_when_billing_is_au(self) -> None:
+        req = app.LongLinkRequest(
+            accessToken="tok_test",
+            link_type="paypal",
+            billing_country="AU",
+            checkout_proxy="socks5://bj2m1188418-region-jp:nanno2@us.cliproxy.io:3010",
+            all_jp_proxy=False,
+            all_no_proxy=False,
+        )
+
+        with patch.object(app, "PROVIDER_STAGE_PROXY", ""):
+            self.assertEqual(
+                app.provider_stage_proxy(req),
+                "socks5://bj2m1188418-region-AU:nanno2@us.cliproxy.io:3010",
+            )
+
+    def test_provider_stage_proxy_uses_de_when_billing_is_de_and_all_jp_disabled(self) -> None:
+        req = app.LongLinkRequest(
+            accessToken="tok_test",
+            link_type="paypal",
+            billing_country="DE",
+            checkout_proxy="socks5://bj2m1188418-region-jp:nanno2@us.cliproxy.io:3010",
+            all_jp_proxy=False,
+            all_no_proxy=False,
+        )
+
+        with patch.object(app, "PROVIDER_STAGE_PROXY", ""):
+            self.assertEqual(
+                app.provider_stage_proxy(req),
+                "socks5://bj2m1188418-region-DE:nanno2@us.cliproxy.io:3010",
+            )
 
     def test_extract_stripe_terminal_error_reads_payment_method_from_last_setup_error(self) -> None:
         detail = app.extract_stripe_terminal_error(
